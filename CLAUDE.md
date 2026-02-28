@@ -30,15 +30,17 @@ crates/libibt-python/                    # PyO3 bindings (publish = false)
     lib.rs          — ibt() entry point, open_source(), build_metadata()
 
 src/libibt/
-  __init__.py     — Public API: ibt(), LogFile
-  base.py         — LogFile dataclass (channels, laps, metadata, filtering, resampling)
+  __init__.py     — Public API: ibt(), ChannelMetadata, LogFile
+  base.py         — ChannelMetadata frozen dataclass, LogFile dataclass
   _libibt_rs.pyi  — Type stubs for the Rust extension
 
 tests/
-  test_parse.py     — Basic parsing tests
-  test_reference.py — Cross-validation against reference parser
-  test_channels.py  — Channel data tests
-  test_logfile.py   — LogFile method tests
+  test_parse.py             — Basic parsing tests
+  test_reference.py         — Cross-validation against reference parser
+  test_cross_validation.py  — Cross-validation against pyirsdk
+  test_channels.py          — Channel data tests
+  test_channel_metadata.py  — ChannelMetadata roundtrip and preservation tests
+  test_logfile.py           — LogFile method tests
 ```
 
 ## Build and test
@@ -59,12 +61,12 @@ Always use `uv run` for Python commands, never bare `python` or `pytest`.
 ## Key details
 
 - **Python >=3.10**, Rust 2021 edition
-- **Dependencies**: pyarrow, numpy (version-constrained by Python version)
+- **Dependencies**: pyarrow, numpy (version-constrained by Python version), pyyaml
 - **Build system**: maturin (configured in pyproject.toml)
 - **Formatter**: Black (line-length 100)
 - **Type checker**: mypy (strict optional, check untyped defs)
 - **Timecodes**: int64 milliseconds throughout
-- **Channels**: each is a 2-column PyArrow table (`timecodes` + value), with field metadata (units, desc, interpolate)
+- **Channels**: each is a 2-column PyArrow table (`timecodes` + value), with field metadata accessed via `ChannelMetadata` (frozen dataclass with `units: str`, `desc: str`, `interpolate: bool`; constructed via `from_field()`, `from_channel_table()`, serialized via `to_field_metadata()`)
 - **Laps**: PyArrow table with columns `num`, `start_time`, `end_time` (all ms)
 - **Array variables** (count > 1) are not yet supported — only scalar variables become channels
 - **LogFile methods are immutable** — filtering/resampling returns new instances
