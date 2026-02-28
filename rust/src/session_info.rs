@@ -16,13 +16,10 @@ pub fn extract_session_yaml(data: &[u8], offset: usize, len: usize) -> Result<St
     let raw = &data[offset..end];
 
     // Find the YAML start marker
-    let yaml_start = raw
-        .windows(3)
-        .position(|w| w == b"---")
-        .unwrap_or_else(|| {
-            // No marker found; skip leading nulls
-            raw.iter().position(|&b| b != 0).unwrap_or(0)
-        });
+    let yaml_start = raw.windows(3).position(|w| w == b"---").unwrap_or_else(|| {
+        // No marker found; skip leading nulls
+        raw.iter().position(|&b| b != 0).unwrap_or(0)
+    });
 
     // Trim trailing nulls
     let yaml_end = raw[yaml_start..]
