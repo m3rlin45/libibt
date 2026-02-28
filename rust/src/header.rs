@@ -51,8 +51,9 @@ fn read_f64(data: &[u8], offset: usize) -> f64 {
 
 /// Validate that an i32 header field is non-negative and convert to usize.
 pub(crate) fn checked_usize(val: i32, field: &str) -> Result<usize> {
-    usize::try_from(val)
-        .map_err(|_| IbtError::InvalidHeader(format!("{} must be non-negative, got {}", field, val)))
+    usize::try_from(val).map_err(|_| {
+        IbtError::InvalidHeader(format!("{} must be non-negative, got {}", field, val))
+    })
 }
 
 impl IbtHeader {

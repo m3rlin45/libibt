@@ -68,8 +68,7 @@ impl VarHeader {
             )));
         }
 
-        let var_type =
-            VarType::from_i32(i32::from_le_bytes(data[0..4].try_into().unwrap()))?;
+        let var_type = VarType::from_i32(i32::from_le_bytes(data[0..4].try_into().unwrap()))?;
         let offset = i32::from_le_bytes(data[4..8].try_into().unwrap());
         let count = i32::from_le_bytes(data[8..12].try_into().unwrap());
         if count < 0 {

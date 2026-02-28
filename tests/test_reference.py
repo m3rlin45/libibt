@@ -108,9 +108,9 @@ class TestChannelValues:
         actual = _rust_value_at(rust_logfile, channel, index)
 
         if isinstance(expected, float):
-            assert isclose(actual, expected, rel_tol=1e-6, abs_tol=1e-9), (
-                f"{channel}[{index}]: Rust={actual}, ref={expected}"
-            )
+            assert isclose(
+                actual, expected, rel_tol=1e-6, abs_tol=1e-9
+            ), f"{channel}[{index}]: Rust={actual}, ref={expected}"
         else:
             assert actual == expected, f"{channel}[{index}]: Rust={actual}, ref={expected}"
 
@@ -127,9 +127,9 @@ class TestTimecodes:
 
         table = rust_logfile.channels["SessionTime"]
         actual_ms = table.column("timecodes")[index].as_py()
-        assert actual_ms == expected_ms, (
-            f"Timecode[{index}]: Rust={actual_ms}, expected={expected_ms}"
-        )
+        assert (
+            actual_ms == expected_ms
+        ), f"Timecode[{index}]: Rust={actual_ms}, expected={expected_ms}"
 
 
 # ── Channel count ─────────────────────────────────────────────────────
@@ -188,9 +188,7 @@ class TestMetadata:
         # Compare top-level keys
         assert set(rust_yaml.keys()) == set(ref_yaml.keys())
         # Spot-check a deeply nested value
-        assert (
-            rust_yaml["WeekendInfo"]["TrackName"] == ref_yaml["WeekendInfo"]["TrackName"]
-        )
+        assert rust_yaml["WeekendInfo"]["TrackName"] == ref_yaml["WeekendInfo"]["TrackName"]
 
 
 # ── Record count consistency ─────────────────────────────────────────
@@ -201,6 +199,6 @@ class TestRecordCountConsistency:
         """Every channel table should have exactly sessionRecordCount rows."""
         expected = ref_parsed["disk_header"].sessionRecordCount
         for name, table in rust_logfile.channels.items():
-            assert len(table) == expected, (
-                f"Channel '{name}' has {len(table)} rows, expected {expected}"
-            )
+            assert (
+                len(table) == expected
+            ), f"Channel '{name}' has {len(table)} rows, expected {expected}"
