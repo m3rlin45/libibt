@@ -1,11 +1,20 @@
 # libibt
 
+[![PyPI](https://img.shields.io/pypi/v/libibt)](https://pypi.org/project/libibt/)
+[![Python](https://img.shields.io/pypi/pyversions/libibt)](https://pypi.org/project/libibt/)
+
 A Python library for reading iRacing IBT telemetry files. Rust core with PyO3 bindings for fast parsing; returns data as PyArrow tables.
 
 ## Installation
 
 ```bash
 pip install libibt
+```
+
+or with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv add libibt
 ```
 
 ### From source
