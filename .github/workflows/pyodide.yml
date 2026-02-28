@@ -1,0 +1,85 @@
+name: Pyodide (WebAssembly) Tests
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  pyodide-build:
+    runs-on: ubuntu-latest
+    name: Build wheel for Pyodide
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+
+    - name: Install Rust nightly with wasm32-unknown-emscripten
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        targets: wasm32-unknown-emscripten
+        components: rust-src
+
+    - name: Install Emscripten SDK
+      uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: "4.0.9"
+
+    - name: Install pyodide-build
+      run: |
+        uv pip install --system --prerelease=allow "wheel<0.44.0"
+        uv pip install --system --prerelease=allow pyodide-build==0.29.3
+
+    - name: Install Pyodide xbuildenv
+      run: pyodide xbuildenv install 0.29.3
+
+    - name: Build wheel for Pyodide
+      run: pyodide build --exports whole_archive
+      env:
+        RUSTUP_TOOLCHAIN: nightly
+        CARGO_BUILD_TARGET: wasm32-unknown-emscripten
+        RUSTFLAGS: "-Zemscripten-wasm-eh"
+        PYO3_CROSS_PYTHON_VERSION: "3.13"
+
+    - name: Upload wheel artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: pyodide-wheel
+        path: dist/*.whl
+        retention-days: 7
+
+  pyodide-test:
+    runs-on: ubuntu-latest
+    needs: pyodide-build
+    name: Test with Pyodide
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Download wheel artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: pyodide-wheel
+        path: dist/
+
+    - name: Install Pyodide
+      run: npm install pyodide@0.29.3
+
+    - name: Run unit tests in Pyodide
+      run: node scripts/run_pyodide_tests.mjs --dist-dir=./dist
+
+    - name: Run bytes input tests in Pyodide
+      run: node scripts/run_pyodide_tests_idbfs.mjs --dist-dir=./dist
