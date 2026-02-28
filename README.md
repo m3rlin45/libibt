@@ -105,33 +105,69 @@ log = ibt('session.ibt', progress=on_progress)
 
 ### Channel metadata
 
-Each channel table carries metadata on the value field:
+Each channel carries typed metadata via the `ChannelMetadata` dataclass:
 
 ```python
+from libibt import ibt, ChannelMetadata
+
+log = ibt('session.ibt')
+
+# Extract from a channel table
+meta = ChannelMetadata.from_channel_table(log.channels['Speed'])
+print(meta.units)        # 'm/s'
+print(meta.desc)         # 'GPS based speed'
+print(meta.interpolate)  # True
+
+# Or from a PyArrow field directly
 field = log.channels['Speed'].schema.field('Speed')
-print(field.metadata[b'units'])        # e.g. b'm/s'
-print(field.metadata[b'desc'])         # e.g. b'GPS based speed'
-print(field.metadata[b'interpolate'])  # b'True' or b'False'
+meta = ChannelMetadata.from_field(field)
+
+# Serialize back to PyArrow field metadata
+raw = meta.to_field_metadata()  # dict[bytes, bytes]
 ```
+
+`ChannelMetadata` is a frozen (immutable) dataclass with fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `units` | `str` | Unit string (e.g., `"m/s"`, `"revs/min"`) |
+| `desc` | `str` | Channel description |
+| `interpolate` | `bool` | Whether to use linear interpolation when resampling |
+
+Metadata is preserved through all `LogFile` operations (filtering, resampling, merging).
 
 ### Metadata fields
 
-`log.metadata` contains:
+`log.metadata` contains fields from both the binary header and parsed session YAML:
 
 | Key | Description |
 |-----|-------------|
 | `session_info_yaml` | Full iRacing session info YAML |
+| `session_info` | Parsed YAML as a dict |
 | `track_name` | Track internal name |
 | `track_display_name` | Track display name |
 | `track_city` | Track city |
 | `track_country` | Track country |
 | `track_length` | Track length |
+| `track_id` | Track ID |
+| `track_type` | Track type |
 | `series_id`, `season_id`, `session_id`, `sub_session_id` | iRacing IDs |
 | `tick_rate` | Sample rate (typically 60 Hz) |
 | `record_count` | Total number of records |
 | `lap_count` | Number of laps |
 | `session_start_date` | Session start date |
 | `start_time`, `end_time` | Session time bounds |
+| `event_type` | Event type (e.g., "Race") |
+| `session_type`, `session_name` | Current session type and name |
+| `driver_name` | Recording driver's username |
+| `driver_user_id`, `driver_irating`, `driver_license` | Driver details |
+| `car_name`, `car_id` | Car screen name and ID |
+| `car_gear_count`, `car_redline_rpm`, `car_shift_rpm`, `car_idle_rpm` | Car specs |
+| `num_drivers` | Number of drivers (excluding pace car) |
+| `weather_temp`, `weather_surface_temp`, `weather_humidity` | Weather conditions |
+| `weather_skies`, `weather_wind_speed`, `weather_wind_dir` | Weather conditions |
+| `car_setup` | Full car setup dict |
+| `sectors` | Sector split definitions |
 
 ## Limitations
 
