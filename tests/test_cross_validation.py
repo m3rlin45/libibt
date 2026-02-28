@@ -122,9 +122,9 @@ class TestChannelValues:
         actual = table.column(channel)[index].as_py()
 
         if isinstance(expected, float):
-            assert isclose(actual, expected, rel_tol=1e-6, abs_tol=1e-9), (
-                f"{channel}[{index}]: libibt={actual}, pyirsdk={expected}"
-            )
+            assert isclose(
+                actual, expected, rel_tol=1e-6, abs_tol=1e-9
+            ), f"{channel}[{index}]: libibt={actual}, pyirsdk={expected}"
         else:
             assert actual == expected, f"{channel}[{index}]: libibt={actual}, pyirsdk={expected}"
 
@@ -137,9 +137,9 @@ class TestRecordCount:
         """Every channel table should have exactly session_record_count rows."""
         expected = pyirsdk_ibt._disk_header.session_record_count
         for name, table in rust_logfile.channels.items():
-            assert len(table) == expected, (
-                f"Channel '{name}' has {len(table)} rows, expected {expected}"
-            )
+            assert (
+                len(table) == expected
+            ), f"Channel '{name}' has {len(table)} rows, expected {expected}"
 
 
 # ── Session info YAML ────────────────────────────────────────────────
@@ -182,6 +182,6 @@ class TestSessionInfo:
         rust_wi = rust_yaml["WeekendInfo"]
         pyirsdk_wi = pyirsdk_session_yaml["WeekendInfo"]
         for key in pyirsdk_wi:
-            assert rust_wi[key] == pyirsdk_wi[key], (
-                f"WeekendInfo.{key}: libibt={rust_wi[key]!r}, pyirsdk={pyirsdk_wi[key]!r}"
-            )
+            assert (
+                rust_wi[key] == pyirsdk_wi[key]
+            ), f"WeekendInfo.{key}: libibt={rust_wi[key]!r}, pyirsdk={pyirsdk_wi[key]!r}"

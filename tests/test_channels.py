@@ -35,9 +35,9 @@ def test_gear_type():
 def test_timecodes_type():
     log = ibt(TEST_FILE)
     for name, table in log.channels.items():
-        assert table.column("timecodes").type == pa.int64(), (
-            f"Channel {name} timecodes has type {table.column('timecodes').type}, expected int64"
-        )
+        assert (
+            table.column("timecodes").type == pa.int64()
+        ), f"Channel {name} timecodes has type {table.column('timecodes').type}, expected int64"
 
 
 def test_timecodes_monotonically_increasing():
