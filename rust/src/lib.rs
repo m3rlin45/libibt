@@ -72,8 +72,7 @@ fn ibt(py: Python<'_>, source: Py<PyAny>, progress: Option<Py<PyAny>>) -> PyResu
     // Construct LogFile
     let base_module = py.import("libibt.base")?;
     let logfile_class = base_module.getattr("LogFile")?;
-    let logfile =
-        logfile_class.call1((channels_dict, laps_table, &metadata_dict, file_name))?;
+    let logfile = logfile_class.call1((channels_dict, laps_table, &metadata_dict, file_name))?;
 
     Ok(logfile.unbind())
 }
