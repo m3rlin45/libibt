@@ -49,8 +49,7 @@ impl IbtFile {
         let num_vars = checked_usize(header.num_vars, "num_vars")?;
         let var_headers = VarHeader::parse_all(data, var_header_offset, num_vars)?;
 
-        let session_info_offset =
-            checked_usize(header.session_info_offset, "session_info_offset")?;
+        let session_info_offset = checked_usize(header.session_info_offset, "session_info_offset")?;
         let session_info_len = checked_usize(header.session_info_len, "session_info_len")?;
         let session_yaml = extract_session_yaml(data, session_info_offset, session_info_len)?;
 
@@ -76,9 +75,7 @@ impl IbtFile {
         let expected_end = buf_len
             .checked_mul(record_count)
             .and_then(|v| v.checked_add(data_offset))
-            .ok_or_else(|| {
-                IbtError::InvalidHeader("Data region arithmetic overflow".into())
-            })?;
+            .ok_or_else(|| IbtError::InvalidHeader("Data region arithmetic overflow".into()))?;
         if mmap.len() < expected_end {
             return Err(IbtError::InvalidHeader(format!(
                 "File too small for {} records: {} bytes (need {})",
@@ -230,6 +227,7 @@ impl IbtFile {
         let mut current_lap = lap_values[0];
         let mut lap_start_time = timecodes.value(0);
 
+        #[allow(clippy::needless_range_loop)]
         for i in 1..record_count {
             if lap_values[i] != current_lap {
                 let transition_time = timecodes.value(i);
