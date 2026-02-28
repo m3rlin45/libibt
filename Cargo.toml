@@ -1,17 +1,9 @@
-[package]
-name = "libibt"
-version = "0.0.1"
-edition = "2021"
-license = "MIT"
+[workspace]
+members = ["crates/libibt", "crates/libibt-python"]
+resolver = "2"
 
-[lib]
-name = "_libibt_rs"
-crate-type = ["cdylib"]
-path = "rust/src/lib.rs"
-
-[dependencies]
-pyo3 = { version = "0.26", features = ["extension-module"] }
-arrow = { version = "57", default-features = false, features = ["pyarrow"] }
+[workspace.dependencies]
+arrow = { version = "57", default-features = false }
 memmap2 = "0.9"
 thiserror = "2"
 

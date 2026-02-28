@@ -1,0 +1,18 @@
+[package]
+name = "libibt"
+version = "0.1.1"
+edition = "2021"
+license = "MIT"
+description = "Pure Rust library for reading iRacing IBT telemetry files"
+
+[features]
+default = []
+arrow = ["dep:arrow"]
+
+[dependencies]
+memmap2 = { workspace = true }
+thiserror = { workspace = true }
+
+[dependencies.arrow]
+workspace = true
+optional = true

@@ -12,6 +12,7 @@ pub enum IbtError {
     #[error("Out of bounds: {0}")]
     OutOfBounds(String),
 
+    #[cfg(feature = "arrow")]
     #[error("Arrow error: {0}")]
     Arrow(#[from] arrow::error::ArrowError),
 
