@@ -1,5 +1,3 @@
-# Copyright 2026, Scott Smith.  MIT License (see LICENSE).
-
 from collections.abc import Sequence
 from dataclasses import dataclass
 import sys
