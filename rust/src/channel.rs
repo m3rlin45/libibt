@@ -1,0 +1,129 @@
+use std::sync::Arc;
+
+use arrow::array::{
+    ArrayRef, BooleanArray, Float32Array, Float64Array, Int32Array, Int64Array, RecordBatch,
+    UInt32Array, UInt8Array,
+};
+use arrow::datatypes::{DataType, Field, Schema};
+
+use crate::error::{IbtError, Result};
+use crate::var_header::{VarHeader, VarType};
+
+/// Build an Arrow RecordBatch for a single channel.
+///
+/// The batch has columns: `timecodes` (Int64 ms) and the channel value column.
+/// Channel metadata (units, desc) is stored in field-level metadata.
+pub fn build_channel_batch(
+    name: &str,
+    timecodes: &Arc<Int64Array>,
+    var: &VarHeader,
+    records: &[u8],
+    buf_len: usize,
+    record_count: usize,
+) -> Result<RecordBatch> {
+    let mut metadata = std::collections::HashMap::new();
+    metadata.insert("units".to_string(), var.unit.clone());
+    metadata.insert("desc".to_string(), var.desc.clone());
+    let interpolate = matches!(var.var_type, VarType::Float | VarType::Double);
+    metadata.insert(
+        "interpolate".to_string(),
+        if interpolate { "True" } else { "False" }.to_string(),
+    );
+
+    if var.count > 1 {
+        return Err(IbtError::OutOfBounds(
+            "Array variables (count > 1) are not supported".to_string(),
+        ));
+    }
+
+    let offset = var.offset as usize;
+
+    let (values_col, data_type): (ArrayRef, DataType) = match var.var_type {
+        VarType::Bool => {
+            let values: Vec<bool> = (0..record_count)
+                .map(|i| records[i * buf_len + offset] != 0)
+                .collect();
+            (Arc::new(BooleanArray::from(values)), DataType::Boolean)
+        }
+        VarType::Char => {
+            let values: Vec<u8> = (0..record_count)
+                .map(|i| records[i * buf_len + offset])
+                .collect();
+            (Arc::new(UInt8Array::from(values)), DataType::UInt8)
+        }
+        VarType::Int => {
+            let values: Vec<i32> = (0..record_count)
+                .map(|i| {
+                    let o = i * buf_len + offset;
+                    i32::from_le_bytes(records[o..o + 4].try_into().unwrap())
+                })
+                .collect();
+            (Arc::new(Int32Array::from(values)), DataType::Int32)
+        }
+        VarType::BitField => {
+            let values: Vec<u32> = (0..record_count)
+                .map(|i| {
+                    let o = i * buf_len + offset;
+                    u32::from_le_bytes(records[o..o + 4].try_into().unwrap())
+                })
+                .collect();
+            (Arc::new(UInt32Array::from(values)), DataType::UInt32)
+        }
+        VarType::Float => {
+            let values: Vec<f32> = (0..record_count)
+                .map(|i| {
+                    let o = i * buf_len + offset;
+                    f32::from_le_bytes(records[o..o + 4].try_into().unwrap())
+                })
+                .collect();
+            (Arc::new(Float32Array::from(values)), DataType::Float32)
+        }
+        VarType::Double => {
+            let values: Vec<f64> = (0..record_count)
+                .map(|i| {
+                    let o = i * buf_len + offset;
+                    f64::from_le_bytes(records[o..o + 8].try_into().unwrap())
+                })
+                .collect();
+            (Arc::new(Float64Array::from(values)), DataType::Float64)
+        }
+    };
+
+    let schema = Schema::new(vec![
+        Field::new("timecodes", DataType::Int64, false),
+        Field::new(name, data_type, false).with_metadata(metadata),
+    ]);
+
+    let batch = RecordBatch::try_new(
+        Arc::new(schema),
+        vec![Arc::new(timecodes.as_ref().clone()), values_col],
+    )?;
+
+    Ok(batch)
+}
+
+/// Build the laps table from lap boundary data.
+///
+/// Returns a RecordBatch with columns: num (Int32), start_time (Int64), end_time (Int64).
+pub fn build_laps_batch(laps: &[(i32, i64, i64)]) -> Result<RecordBatch> {
+    let nums: Vec<i32> = laps.iter().map(|(n, _, _)| *n).collect();
+    let starts: Vec<i64> = laps.iter().map(|(_, s, _)| *s).collect();
+    let ends: Vec<i64> = laps.iter().map(|(_, _, e)| *e).collect();
+
+    let schema = Schema::new(vec![
+        Field::new("num", DataType::Int32, false),
+        Field::new("start_time", DataType::Int64, false),
+        Field::new("end_time", DataType::Int64, false),
+    ]);
+
+    let batch = RecordBatch::try_new(
+        Arc::new(schema),
+        vec![
+            Arc::new(Int32Array::from(nums)),
+            Arc::new(Int64Array::from(starts)),
+            Arc::new(Int64Array::from(ends)),
+        ],
+    )?;
+
+    Ok(batch)
+}

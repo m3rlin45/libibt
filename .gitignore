@@ -1,0 +1,36 @@
+# Rust
+target/
+Cargo.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test data (IBT files are large)
+*.ibt
+!tests/test_data/*.ibt
+
+# uv
+uv.lock
+
+# Claude local settings
+.claude/settings.local.json

@@ -1,0 +1,49 @@
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Check Rust formatting
+        run: cargo fmt --check
+
+      - name: Clippy lints
+        run: cargo clippy --workspace --all-targets -- -W clippy::all
+
+      - name: Rust tests
+        run: cargo test --workspace
+
+      - name: Install Python dependencies
+        run: uv sync
+
+      - name: Check Python formatting
+        run: uv run black --check .
+
+      - name: Type check
+        run: uv run mypy src/
+
+      - name: Python tests
+        run: uv run pytest tests/ -v
