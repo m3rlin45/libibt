@@ -2,14 +2,7 @@ use arrow::pyarrow::ToPyArrow;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-pub mod channel;
-pub mod error;
-pub mod header;
-pub mod reader;
-pub mod session_info;
-pub mod var_header;
-
-use reader::IbtFile;
+use libibt::IbtFile;
 
 /// iRacing IBT telemetry file parser implemented in Rust.
 #[pymodule]

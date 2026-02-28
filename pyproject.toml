@@ -1,6 +1,6 @@
 [project]
 name = "libibt"
-version = "0.0.1"
+version = "0.0.2"
 description = "Library for reading iRacing IBT telemetry files"
 license = "MIT"
 authors = [
@@ -94,9 +94,9 @@ module = "yaml.*"
 ignore_missing_imports = true
 
 [tool.maturin]
+manifest-path = "crates/libibt-python/Cargo.toml"
 python-source = "src"
 module-name = "libibt._libibt_rs"
-features = ["pyo3/extension-module"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
