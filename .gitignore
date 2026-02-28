@@ -34,3 +34,9 @@ uv.lock
 
 # Claude local settings
 .claude/settings.local.json
+
+# Pyodide
+.pyodide-xbuildenv-*/
+node_modules/
+package.json
+package-lock.json
