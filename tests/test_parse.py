@@ -69,6 +69,32 @@ def test_metadata_keys():
         "season_id",
         "series_id",
         "session_start_date",
+        # Derived from parsed YAML
+        "session_info",
+        "event_type",
+        "session_type",
+        "session_name",
+        "driver_name",
+        "driver_user_id",
+        "driver_irating",
+        "driver_license",
+        "car_name",
+        "car_id",
+        "car_gear_count",
+        "car_redline_rpm",
+        "car_shift_rpm",
+        "car_idle_rpm",
+        "track_id",
+        "track_type",
+        "weather_temp",
+        "weather_surface_temp",
+        "weather_humidity",
+        "weather_skies",
+        "weather_wind_speed",
+        "weather_wind_dir",
+        "num_drivers",
+        "car_setup",
+        "sectors",
     }
     assert expected_keys == set(log.metadata.keys())
 
@@ -88,3 +114,45 @@ def test_each_channel_has_timecodes():
     for name, table in log.channels.items():
         assert "timecodes" in table.column_names, f"Channel {name} missing timecodes column"
         assert name in table.column_names, f"Channel {name} missing value column"
+
+
+def test_session_info_parsed():
+    log = ibt(TEST_FILE)
+    si = log.metadata["session_info"]
+    assert isinstance(si, dict)
+    assert "WeekendInfo" in si
+    assert "DriverInfo" in si
+    assert "SessionInfo" in si
+
+
+def test_driver_metadata():
+    log = ibt(TEST_FILE)
+    assert isinstance(log.metadata["driver_name"], str)
+    assert len(log.metadata["driver_name"]) > 0
+    assert isinstance(log.metadata["car_name"], str)
+    assert len(log.metadata["car_name"]) > 0
+    assert isinstance(log.metadata["driver_user_id"], int)
+    assert isinstance(log.metadata["car_id"], int)
+
+
+def test_session_type():
+    log = ibt(TEST_FILE)
+    assert isinstance(log.metadata["event_type"], str)
+    assert isinstance(log.metadata["session_type"], str)
+    assert isinstance(log.metadata["session_name"], str)
+
+
+def test_car_specs():
+    log = ibt(TEST_FILE)
+    assert isinstance(log.metadata["car_gear_count"], int)
+    assert log.metadata["car_gear_count"] > 0
+    assert isinstance(log.metadata["car_redline_rpm"], float)
+    assert log.metadata["car_redline_rpm"] > 0
+    assert isinstance(log.metadata["car_shift_rpm"], float)
+    assert isinstance(log.metadata["car_idle_rpm"], float)
+
+
+def test_num_drivers():
+    log = ibt(TEST_FILE)
+    assert isinstance(log.metadata["num_drivers"], int)
+    assert log.metadata["num_drivers"] > 0
