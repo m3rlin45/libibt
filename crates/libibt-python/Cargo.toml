@@ -1,0 +1,14 @@
+[package]
+name = "libibt-python"
+version = "0.1.1"
+edition = "2021"
+publish = false
+
+[lib]
+name = "_libibt_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+libibt = { path = "../libibt", features = ["arrow"] }
+pyo3 = { version = "0.26", features = ["extension-module"] }
+arrow = { workspace = true, features = ["pyarrow"] }

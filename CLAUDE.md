@@ -10,15 +10,24 @@ Python library for reading iRacing IBT telemetry files. Rust core parses the bin
 
 ## Architecture
 
+Cargo workspace with two crates: a publishable pure-Rust core and PyO3 bindings.
+
 ```
-rust/src/
-  lib.rs          — PyO3 module + ibt() entry point
-  reader.rs       — IbtFile: mmap, header parsing, channel extraction
-  header.rs       — Binary header structs
-  var_header.rs   — Variable header parsing (name, type, offset)
-  channel.rs      — Arrow RecordBatch construction per channel
-  session_info.rs — Session YAML extraction
-  error.rs        — Error types
+Cargo.toml                              # Workspace root
+
+crates/libibt/                           # Pure Rust core (publishable to crates.io)
+  src/
+    lib.rs          — Public API: re-exports, read_ibt(), read_ibt_file()
+    error.rs        — Error types (Arrow variant feature-gated)
+    header.rs       — Binary header structs
+    var_header.rs   — Variable header parsing (name, type, offset)
+    reader.rs       — IbtFile: mmap, header parsing, channel extraction
+    channel.rs      — Arrow RecordBatch construction (feature-gated behind `arrow`)
+    session_info.rs — Session YAML extraction
+
+crates/libibt-python/                    # PyO3 bindings (publish = false)
+  src/
+    lib.rs          — ibt() entry point, open_source(), build_metadata()
 
 src/libibt/
   __init__.py     — Public API: ibt(), LogFile
