@@ -37,6 +37,71 @@ class LogFile:
     metadata: dict[str, Any]
     file_name: str
 
+    def __post_init__(self) -> None:
+        import yaml
+
+        raw = self.metadata.get("session_info_yaml", "")
+        if not raw:
+            return
+        parsed = yaml.safe_load(raw)
+        if not parsed:
+            return
+
+        self.metadata["session_info"] = parsed
+
+        weekend = parsed.get("WeekendInfo", {})
+        driver_info = parsed.get("DriverInfo", {})
+        session_info = parsed.get("SessionInfo", {})
+
+        # Event/session type
+        self.metadata["event_type"] = weekend.get("EventType")
+        current_num = session_info.get("CurrentSessionNum")
+        sessions = session_info.get("Sessions", [])
+        current_session = next((s for s in sessions if s.get("SessionNum") == current_num), None)
+        if current_session:
+            self.metadata["session_type"] = current_session.get("SessionType")
+            self.metadata["session_name"] = current_session.get("SessionName")
+
+        # Driver (the one who recorded the file)
+        driver_idx = driver_info.get("DriverCarIdx")
+        drivers = driver_info.get("Drivers", [])
+        driver = next((d for d in drivers if d.get("CarIdx") == driver_idx), None)
+        if driver:
+            self.metadata["driver_name"] = driver.get("UserName")
+            self.metadata["driver_user_id"] = driver.get("UserID")
+            self.metadata["driver_irating"] = driver.get("IRating")
+            self.metadata["driver_license"] = driver.get("LicString")
+            self.metadata["car_name"] = driver.get("CarScreenName")
+            self.metadata["car_id"] = driver.get("CarID")
+
+        # Car specs
+        self.metadata["car_gear_count"] = driver_info.get("DriverCarGearNumForward")
+        self.metadata["car_redline_rpm"] = driver_info.get("DriverCarRedLine")
+        self.metadata["car_shift_rpm"] = driver_info.get("DriverCarSLShiftRPM")
+        self.metadata["car_idle_rpm"] = driver_info.get("DriverCarIdleRPM")
+
+        # Track (supplement existing fields)
+        self.metadata["track_id"] = weekend.get("TrackID")
+        self.metadata["track_type"] = weekend.get("TrackType")
+
+        # Weather
+        self.metadata["weather_temp"] = weekend.get("TrackAirTemp")
+        self.metadata["weather_surface_temp"] = weekend.get("TrackSurfaceTemp")
+        self.metadata["weather_humidity"] = weekend.get("TrackRelativeHumidity")
+        self.metadata["weather_skies"] = weekend.get("TrackSkies")
+        self.metadata["weather_wind_speed"] = weekend.get("TrackWindVel")
+        self.metadata["weather_wind_dir"] = weekend.get("TrackWindDir")
+
+        # Number of drivers (excluding pace car)
+        self.metadata["num_drivers"] = sum(1 for d in drivers if not d.get("CarIsPaceCar", 0))
+
+        # Car setup
+        self.metadata["car_setup"] = parsed.get("CarSetup")
+
+        # Sectors
+        split_info = parsed.get("SplitTimeInfo", {})
+        self.metadata["sectors"] = split_info.get("Sectors")
+
     def __repr__(self) -> str:
         return (
             f"LogFile(file_name={self.file_name!r}, "
