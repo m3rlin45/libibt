@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use arrow::array::{
@@ -9,10 +10,40 @@ use arrow::datatypes::{DataType, Field, Schema};
 use crate::error::{IbtError, Result};
 use crate::var_header::{VarHeader, VarType};
 
+/// Typed metadata for a single telemetry channel.
+pub struct ChannelMetadata {
+    pub units: String,
+    pub desc: String,
+    pub interpolate: bool,
+}
+
+impl ChannelMetadata {
+    /// Build metadata from a VarHeader.
+    pub fn from_var_header(var: &VarHeader) -> Self {
+        ChannelMetadata {
+            units: var.unit.clone(),
+            desc: var.desc.clone(),
+            interpolate: matches!(var.var_type, VarType::Float | VarType::Double),
+        }
+    }
+
+    /// Convert to a HashMap suitable for Arrow field metadata.
+    pub fn to_hashmap(&self) -> HashMap<String, String> {
+        let mut m = HashMap::new();
+        m.insert("units".to_string(), self.units.clone());
+        m.insert("desc".to_string(), self.desc.clone());
+        m.insert(
+            "interpolate".to_string(),
+            if self.interpolate { "True" } else { "False" }.to_string(),
+        );
+        m
+    }
+}
+
 /// Build an Arrow RecordBatch for a single channel.
 ///
 /// The batch has columns: `timecodes` (Int64 ms) and the channel value column.
-/// Channel metadata (units, desc) is stored in field-level metadata.
+/// Channel metadata (units, desc, interpolate) is stored in field-level metadata.
 pub fn build_channel_batch(
     name: &str,
     timecodes: &Arc<Int64Array>,
@@ -21,14 +52,7 @@ pub fn build_channel_batch(
     buf_len: usize,
     record_count: usize,
 ) -> Result<RecordBatch> {
-    let mut metadata = std::collections::HashMap::new();
-    metadata.insert("units".to_string(), var.unit.clone());
-    metadata.insert("desc".to_string(), var.desc.clone());
-    let interpolate = matches!(var.var_type, VarType::Float | VarType::Double);
-    metadata.insert(
-        "interpolate".to_string(),
-        if interpolate { "True" } else { "False" }.to_string(),
-    );
+    let metadata = ChannelMetadata::from_var_header(var).to_hashmap();
 
     if var.count > 1 {
         return Err(IbtError::OutOfBounds(

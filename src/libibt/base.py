@@ -10,6 +10,83 @@ if sys.byteorder != "little":
     raise RuntimeError("libibt requires a little-endian platform")
 
 
+@dataclass(frozen=True)
+class ChannelMetadata:
+    """Typed metadata for a telemetry channel.
+
+    Provides typed access to channel metadata stored in PyArrow field metadata.
+    Use ``from_field()`` or ``from_channel_table()`` to extract metadata, and
+    ``to_field_metadata()`` to serialize back to PyArrow format.
+
+    Attributes:
+        units: Unit string (e.g., "m/s", "revs/min").
+        desc: Description of the channel.
+        interpolate: Whether to use linear interpolation when resampling.
+
+    Example:
+        >>> field = log.channels['Speed'].schema.field('Speed')
+        >>> meta = ChannelMetadata.from_field(field)
+        >>> meta.units
+        'm/s'
+        >>> meta.interpolate
+        True
+    """
+
+    units: str = ""
+    desc: str = ""
+    interpolate: bool = False
+
+    @classmethod
+    def from_field(cls, field: pa.Field) -> "ChannelMetadata":
+        """Extract typed metadata from a PyArrow field.
+
+        Args:
+            field: A PyArrow field with metadata dict.
+
+        Returns:
+            ChannelMetadata with decoded and typed values.
+        """
+        m = field.metadata or {}
+        return cls(
+            units=m.get(b"units", b"").decode(),
+            desc=m.get(b"desc", b"").decode(),
+            interpolate=m.get(b"interpolate", b"").decode() == "True",
+        )
+
+    @classmethod
+    def from_channel_table(cls, table: pa.Table) -> "ChannelMetadata":
+        """Extract typed metadata from a channel table.
+
+        Channel tables have exactly two columns: ``timecodes`` and the value
+        column.  This method finds the non-timecodes field and reads its
+        metadata.
+
+        Args:
+            table: A PyArrow table with ``timecodes`` + one value column.
+
+        Returns:
+            ChannelMetadata with decoded and typed values.
+        """
+        for i in range(table.schema.__len__()):
+            field = table.schema.field(i)
+            if field.name != "timecodes":
+                return cls.from_field(field)
+        return cls()
+
+    def to_field_metadata(self) -> dict[bytes, bytes]:
+        """Pack into PyArrow field metadata format.
+
+        Returns:
+            Dict with bytes keys and bytes values suitable for
+            ``pa.Field.with_metadata()``.
+        """
+        return {
+            b"units": self.units.encode(),
+            b"desc": self.desc.encode(),
+            b"interpolate": str(self.interpolate).encode(),
+        }
+
+
 @dataclass(eq=False)
 class LogFile:
     """
@@ -132,11 +209,9 @@ class LogFile:
         channel_names = sorted(resampled.channels.keys())
 
         # Collect metadata for restoration
-        channel_metadata = {}
+        channel_metadata: dict[str, ChannelMetadata] = {}
         for name in channel_names:
-            field = resampled.channels[name].schema.field(name)
-            if field.metadata:
-                channel_metadata[name] = field.metadata
+            channel_metadata[name] = ChannelMetadata.from_channel_table(resampled.channels[name])
 
         # Build the result table
         columns_dict: dict[str, Any] = {"timecodes": union_timecodes}
@@ -146,15 +221,16 @@ class LogFile:
         result = pa.table(columns_dict)
 
         # Restore schema with metadata
-        if channel_metadata:
-            new_fields = []
-            for field in result.schema:
-                if field.name in channel_metadata:
-                    new_fields.append(field.with_metadata(channel_metadata[field.name]))
-                else:
-                    new_fields.append(field)
-            new_schema = pa.schema(new_fields)
-            result = result.cast(new_schema)
+        new_fields = []
+        for field in result.schema:
+            if field.name in channel_metadata:
+                new_fields.append(
+                    field.with_metadata(channel_metadata[field.name].to_field_metadata())
+                )
+            else:
+                new_fields.append(field)
+        new_schema = pa.schema(new_fields)
+        result = result.cast(new_schema)
 
         return result
 
@@ -279,15 +355,11 @@ class LogFile:
 
         for name, channel_table in source.channels.items():
             field = channel_table.schema.field(name)
+            meta = ChannelMetadata.from_field(field)
             channel_timecodes = channel_table.column("timecodes").to_numpy()
             channel_values = channel_table.column(name).to_numpy(zero_copy_only=False)
 
-            should_interpolate = False
-            if field.metadata:
-                interpolate_value = field.metadata.get(b"interpolate", b"").decode("utf-8")
-                should_interpolate = interpolate_value == "True"
-
-            if should_interpolate:
+            if meta.interpolate:
                 resampled_values = np.interp(
                     target_timecodes_np,
                     channel_timecodes,
@@ -303,7 +375,7 @@ class LogFile:
                     resampled_values[leading_mask] = channel_values[0]
 
             output_type = field.type
-            if should_interpolate and pa.types.is_integer(field.type):
+            if meta.interpolate and pa.types.is_integer(field.type):
                 output_type = pa.float64()
 
             new_table = pa.table(
@@ -313,10 +385,9 @@ class LogFile:
                 }
             )
 
-            if field.metadata:
-                new_field = new_table.schema.field(name).with_metadata(field.metadata)
-                new_schema = pa.schema([new_table.schema.field("timecodes"), new_field])
-                new_table = new_table.cast(new_schema)
+            new_field = new_table.schema.field(name).with_metadata(meta.to_field_metadata())
+            new_schema = pa.schema([new_table.schema.field("timecodes"), new_field])
+            new_table = new_table.cast(new_schema)
 
             new_channels[name] = new_table
 
