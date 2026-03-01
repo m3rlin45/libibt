@@ -302,6 +302,58 @@ class LogFile:
             file_name=self.file_name,
         )
 
+    def split_sessions(self) -> list["LogFile"]:
+        """
+        Split the log file into separate sessions.
+
+        In offline practice, iRacing resets the lap counter to 0 when the driver
+        resets. This produces multiple sessions within a single IBT file.
+        This method splits the file into one LogFile per session, dropping
+        incomplete laps (16ms reset artifacts).
+
+        Returns:
+            List of LogFile instances, one per session. Single-session files
+            return a 1-element list.
+        """
+        session_col = self.laps.column("session").to_pylist()
+        lap_type_col = self.laps.column("lap_type").to_pylist()
+        unique_sessions = sorted(set(session_col))
+
+        results: list[LogFile] = []
+        for sess in unique_sessions:
+            # Find laps belonging to this session, excluding incomplete
+            indices = [
+                i
+                for i, (s, t) in enumerate(zip(session_col, lap_type_col))
+                if s == sess and t != "incomplete"
+            ]
+            if not indices:
+                continue
+
+            session_laps = self.laps.take(indices)
+            start_time = int(session_laps.column("start_time")[0].as_py())
+            end_time = int(session_laps.column("end_time")[-1].as_py())
+
+            new_channels = {}
+            for name, channel_table in self.channels.items():
+                timecodes = channel_table.column("timecodes")
+                mask = pc.and_(
+                    pc.greater_equal(timecodes, start_time),
+                    pc.less(timecodes, end_time),
+                )
+                new_channels[name] = channel_table.filter(mask)
+
+            results.append(
+                LogFile(
+                    channels=new_channels,
+                    laps=session_laps,
+                    metadata=dict(self.metadata),
+                    file_name=self.file_name,
+                )
+            )
+
+        return results
+
     def filter_by_lap(
         self,
         lap_num: int,

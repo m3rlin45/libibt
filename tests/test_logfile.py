@@ -190,3 +190,111 @@ def test_resample_interpolated_channel():
     v0 = log.channels["Speed"].column("Speed")[0].as_py()
     v1 = log.channels["Speed"].column("Speed")[1].as_py()
     assert min(v0, v1) <= val <= max(v0, v1) or val == pytest.approx((v0 + v1) / 2, rel=0.1)
+
+
+# --- Lap classification ---
+
+MULTI_SESSION_FILE = "tests/test_data/formulair04_bathurst 2026-02-21 20-57-19.ibt"
+
+
+def test_lap_type_column_exists():
+    log = ibt(TEST_FILE)
+    assert "lap_type" in log.laps.column_names
+
+
+def test_session_column_exists():
+    log = ibt(TEST_FILE)
+    assert "session" in log.laps.column_names
+
+
+def test_real_file_lap_types():
+    log = ibt(TEST_FILE)
+    types = log.laps.column("lap_type").to_pylist()
+    valid_types = {"full", "out", "in", "partial", "incomplete"}
+    assert all(t in valid_types for t in types)
+    # test.ibt is a race file — should have mostly full laps
+    assert types.count("full") >= 10
+
+
+def test_bathurst_lap_types():
+    log = ibt(MULTI_SESSION_FILE)
+    types = log.laps.column("lap_type").to_pylist()
+    # Should have a mix of types
+    assert "full" in types
+    assert "partial" in types or "incomplete" in types or "out" in types
+
+
+def test_bathurst_session_count():
+    log = ibt(MULTI_SESSION_FILE)
+    sessions = log.laps.column("session").to_pylist()
+    assert max(sessions) >= 1  # At least 2 sessions (0 and 1)
+
+
+def test_lap_type_preserved_through_filter():
+    log = ibt(TEST_FILE)
+    filtered = log.filter_by_time_range(100000, 200000)
+    assert "lap_type" in filtered.laps.column_names
+    assert "session" in filtered.laps.column_names
+
+
+def test_lap_type_preserved_through_select():
+    log = ibt(TEST_FILE)
+    sel = log.select_channels(["Speed"])
+    assert "lap_type" in sel.laps.column_names
+    assert "session" in sel.laps.column_names
+
+
+# --- split_sessions ---
+
+
+def test_split_no_resets():
+    log = ibt(TEST_FILE)
+    sessions = log.split_sessions()
+    assert len(sessions) == 1
+    assert len(sessions[0].laps) > 0
+
+
+def test_split_bathurst():
+    log = ibt(MULTI_SESSION_FILE)
+    sessions = log.split_sessions()
+    assert len(sessions) >= 2
+
+
+def test_split_drops_incomplete():
+    log = ibt(MULTI_SESSION_FILE)
+    sessions = log.split_sessions()
+    for s in sessions:
+        types = s.laps.column("lap_type").to_pylist()
+        assert "incomplete" not in types
+
+
+def test_split_channels_time_bounded():
+    log = ibt(MULTI_SESSION_FILE)
+    sessions = log.split_sessions()
+    for s in sessions:
+        start = int(s.laps.column("start_time")[0].as_py())
+        end = int(s.laps.column("end_time")[-1].as_py())
+        for name, table in s.channels.items():
+            tc = table.column("timecodes").to_pylist()
+            if tc:
+                assert tc[0] >= start, f"Channel {name} starts before session"
+                assert tc[-1] < end, f"Channel {name} ends after session"
+
+
+def test_split_metadata_independent():
+    log = ibt(MULTI_SESSION_FILE)
+    sessions = log.split_sessions()
+    if len(sessions) >= 2:
+        sessions[0].metadata["test_key"] = "test_value"
+        assert "test_key" not in sessions[1].metadata
+
+
+def test_split_then_filter_by_lap():
+    log = ibt(MULTI_SESSION_FILE)
+    sessions = log.split_sessions()
+    # Filter by a lap in the first session
+    first = sessions[0]
+    lap_nums = first.laps.column("num").to_pylist()
+    if lap_nums:
+        filtered = first.filter_by_lap(lap_nums[0])
+        assert len(filtered.channels) > 0

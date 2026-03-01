@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use arrow::array::{
     ArrayRef, BooleanArray, Float32Array, Float64Array, Int32Array, Int64Array, RecordBatch,
-    UInt32Array, UInt8Array,
+    StringArray, UInt32Array, UInt8Array,
 };
 use arrow::datatypes::{DataType, Field, Schema};
 
@@ -126,18 +126,32 @@ pub fn build_channel_batch(
     Ok(batch)
 }
 
-/// Build the laps table from lap boundary data.
+/// A classified lap record with session information.
+pub struct LapRecord {
+    pub num: i32,
+    pub start_time: i64,
+    pub end_time: i64,
+    pub lap_type: String,
+    pub session: i32,
+}
+
+/// Build the laps table from classified lap records.
 ///
-/// Returns a RecordBatch with columns: num (Int32), start_time (Int64), end_time (Int64).
-pub fn build_laps_batch(laps: &[(i32, i64, i64)]) -> Result<RecordBatch> {
-    let nums: Vec<i32> = laps.iter().map(|(n, _, _)| *n).collect();
-    let starts: Vec<i64> = laps.iter().map(|(_, s, _)| *s).collect();
-    let ends: Vec<i64> = laps.iter().map(|(_, _, e)| *e).collect();
+/// Returns a RecordBatch with columns: num (Int32), start_time (Int64), end_time (Int64),
+/// lap_type (Utf8), session (Int32).
+pub fn build_laps_batch(laps: &[LapRecord]) -> Result<RecordBatch> {
+    let nums: Vec<i32> = laps.iter().map(|l| l.num).collect();
+    let starts: Vec<i64> = laps.iter().map(|l| l.start_time).collect();
+    let ends: Vec<i64> = laps.iter().map(|l| l.end_time).collect();
+    let types: Vec<&str> = laps.iter().map(|l| l.lap_type.as_str()).collect();
+    let sessions: Vec<i32> = laps.iter().map(|l| l.session).collect();
 
     let schema = Schema::new(vec![
         Field::new("num", DataType::Int32, false),
         Field::new("start_time", DataType::Int64, false),
         Field::new("end_time", DataType::Int64, false),
+        Field::new("lap_type", DataType::Utf8, false),
+        Field::new("session", DataType::Int32, false),
     ]);
 
     let batch = RecordBatch::try_new(
@@ -146,6 +160,8 @@ pub fn build_laps_batch(laps: &[(i32, i64, i64)]) -> Result<RecordBatch> {
             Arc::new(Int32Array::from(nums)),
             Arc::new(Int64Array::from(starts)),
             Arc::new(Int64Array::from(ends)),
+            Arc::new(StringArray::from(types)),
+            Arc::new(Int32Array::from(sessions)),
         ],
     )?;
 
