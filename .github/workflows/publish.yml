@@ -153,6 +153,27 @@ jobs:
     - name: Run tests
       run: uv run --python .venv pytest tests/ -v --tb=short
 
+  pyodide:
+    uses: ./.github/workflows/pyodide.yml
+
+  upload-pyodide:
+    name: Upload Pyodide wheels to GitHub Release
+    runs-on: ubuntu-latest
+    needs: [pyodide]
+    if: github.event_name == 'release'
+    permissions:
+      contents: write
+    steps:
+    - name: Download Pyodide wheels
+      uses: actions/download-artifact@v4
+      with:
+        name: pyodide-wheel
+        path: dist/
+    - name: Upload to GitHub Release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh release upload "${{ github.event.release.tag_name }}" dist/* --clobber --repo "${{ github.repository }}"
+
   publish:
     name: Publish to PyPI
     runs-on: ubuntu-latest
@@ -167,11 +188,18 @@ jobs:
       contents: write
 
     steps:
-    - name: Download all artifacts
+    - name: Download CPython wheels
       uses: actions/download-artifact@v4
       with:
+        pattern: wheel-*
         path: dist/
         merge-multiple: true
+
+    - name: Download sdist
+      uses: actions/download-artifact@v4
+      with:
+        name: sdist
+        path: dist/
 
     - name: List artifacts
       run: ls -la dist/
