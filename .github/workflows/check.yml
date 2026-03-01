@@ -47,3 +47,6 @@ jobs:
 
       - name: Python tests
         run: uv run pytest tests/ -v
+
+  pyodide:
+    uses: ./.github/workflows/pyodide.yml
