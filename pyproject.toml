@@ -1,6 +1,6 @@
 [project]
 name = "libibt"
-version = "0.0.3"
+version = "0.0.4"
 description = "Library for reading iRacing IBT telemetry files"
 license = "MIT"
 authors = [

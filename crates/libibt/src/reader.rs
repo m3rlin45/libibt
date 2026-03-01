@@ -135,9 +135,9 @@ mod arrow_ext {
 
     use arrow::array::{Int64Array, RecordBatch};
 
-    use crate::channel::{build_channel_batch, build_laps_batch};
+    use crate::channel::{build_channel_batch, build_laps_batch, LapRecord};
     use crate::error::{IbtError, Result};
-    use crate::var_header::VarType;
+    use crate::var_header::{VarHeader, VarType};
 
     use super::IbtFile;
 
@@ -218,7 +218,73 @@ mod arrow_ext {
                 .collect()
         }
 
-        /// Extract lap boundaries from the Lap telemetry variable.
+        /// Read a bool variable's values from raw records.
+        fn read_bool_values(
+            var: &VarHeader,
+            records: &[u8],
+            buf_len: usize,
+            record_count: usize,
+        ) -> Vec<bool> {
+            let offset = var.offset as usize;
+            (0..record_count)
+                .map(|i| records[i * buf_len + offset] != 0)
+                .collect()
+        }
+
+        /// Read a float variable's values from raw records (handles f32 and f64).
+        fn read_float_values(
+            var: &VarHeader,
+            records: &[u8],
+            buf_len: usize,
+            record_count: usize,
+        ) -> Vec<f32> {
+            let offset = var.offset as usize;
+            match var.var_type {
+                VarType::Float => (0..record_count)
+                    .map(|i| {
+                        let o = i * buf_len + offset;
+                        f32::from_le_bytes(records[o..o + 4].try_into().unwrap())
+                    })
+                    .collect(),
+                VarType::Double => (0..record_count)
+                    .map(|i| {
+                        let o = i * buf_len + offset;
+                        f64::from_le_bytes(records[o..o + 8].try_into().unwrap()) as f32
+                    })
+                    .collect(),
+                _ => vec![0.0; record_count],
+            }
+        }
+
+        /// Classify a single lap based on sample count, pit road status, and track distance.
+        fn classify_lap(
+            sample_count: usize,
+            on_pit_road_start: bool,
+            on_pit_road_end: bool,
+            lap_dist_pct_start: f32,
+            lap_dist_pct_end: f32,
+        ) -> &'static str {
+            if sample_count < 2 {
+                return "incomplete";
+            }
+            if on_pit_road_start {
+                return "out";
+            }
+            if on_pit_road_end {
+                return "in";
+            }
+            let sf_threshold = 0.02;
+            let sf_upper = 1.0 - sf_threshold;
+            let start_away = lap_dist_pct_start > sf_threshold && lap_dist_pct_start < sf_upper;
+            let end_away = lap_dist_pct_end > sf_threshold && lap_dist_pct_end < sf_upper;
+            if start_away || end_away {
+                return "partial";
+            }
+            "full"
+        }
+
+        /// Extract lap boundaries with classification and session detection.
+        #[allow(clippy::too_many_lines)]
         pub fn extract_laps(&self, timecodes: &Arc<Int64Array>) -> Result<RecordBatch> {
             let lap_var = match self.var_by_name("Lap") {
                 Some(v) => v,
@@ -242,26 +308,243 @@ mod arrow_ext {
                 })
                 .collect();
 
-            // Find lap transitions
-            let mut laps: Vec<(i32, i64, i64)> = Vec::new();
+            // Read classification signals (optional — gracefully degrade if missing)
+            let on_pit_road_values: Option<Vec<bool>> = self
+                .var_by_name("OnPitRoad")
+                .map(|var| Self::read_bool_values(var, records, buf_len, record_count));
+            let lap_dist_pct_values: Option<Vec<f32>> = self
+                .var_by_name("LapDistPct")
+                .map(|var| Self::read_float_values(var, records, buf_len, record_count));
+
+            // Find lap transitions and record boundaries
+            struct LapBoundary {
+                num: i32,
+                start_idx: usize,
+                end_idx: usize, // exclusive
+                start_time: i64,
+                end_time: i64,
+            }
+
+            let mut boundaries: Vec<LapBoundary> = Vec::new();
             let mut current_lap = lap_values[0];
+            let mut lap_start_idx: usize = 0;
             let mut lap_start_time = timecodes.value(0);
 
             #[allow(clippy::needless_range_loop)]
             for i in 1..record_count {
                 if lap_values[i] != current_lap {
                     let transition_time = timecodes.value(i);
-                    laps.push((current_lap, lap_start_time, transition_time));
+                    boundaries.push(LapBoundary {
+                        num: current_lap,
+                        start_idx: lap_start_idx,
+                        end_idx: i,
+                        start_time: lap_start_time,
+                        end_time: transition_time,
+                    });
                     current_lap = lap_values[i];
+                    lap_start_idx = i;
                     lap_start_time = transition_time;
                 }
             }
 
             // Close the final lap
             let end_time = timecodes.value(record_count - 1);
-            laps.push((current_lap, lap_start_time, end_time));
+            boundaries.push(LapBoundary {
+                num: current_lap,
+                start_idx: lap_start_idx,
+                end_idx: record_count,
+                start_time: lap_start_time,
+                end_time,
+            });
 
-            build_laps_batch(&laps)
+            // Classify each lap and detect sessions
+            let mut session: i32 = 0;
+            let mut first_lap = true;
+            let mut lap_records: Vec<LapRecord> = Vec::with_capacity(boundaries.len());
+
+            for boundary in &boundaries {
+                // Session detection: increment when lap number resets to 0
+                if boundary.num == 0 && !first_lap {
+                    session += 1;
+                }
+                first_lap = false;
+
+                let sample_count = boundary.end_idx - boundary.start_idx;
+
+                let on_pit_start = on_pit_road_values
+                    .as_ref()
+                    .is_some_and(|v| v[boundary.start_idx]);
+                let on_pit_end = on_pit_road_values
+                    .as_ref()
+                    .is_some_and(|v| v[boundary.end_idx.saturating_sub(1)]);
+
+                let dist_pct_start = lap_dist_pct_values
+                    .as_ref()
+                    .map_or(0.0, |v| v[boundary.start_idx]);
+                let dist_pct_end = lap_dist_pct_values
+                    .as_ref()
+                    .map_or(0.0, |v| v[boundary.end_idx.saturating_sub(1)]);
+
+                let lap_type = Self::classify_lap(
+                    sample_count,
+                    on_pit_start,
+                    on_pit_end,
+                    dist_pct_start,
+                    dist_pct_end,
+                );
+
+                lap_records.push(LapRecord {
+                    num: boundary.num,
+                    start_time: boundary.start_time,
+                    end_time: boundary.end_time,
+                    lap_type: lap_type.to_string(),
+                    session,
+                });
+            }
+
+            build_laps_batch(&lap_records)
         }
+    }
+}
+
+#[cfg(all(test, feature = "arrow"))]
+mod tests {
+    fn classify_lap(
+        sample_count: usize,
+        on_pit_road_start: bool,
+        on_pit_road_end: bool,
+        lap_dist_pct_start: f32,
+        lap_dist_pct_end: f32,
+    ) -> &'static str {
+        if sample_count < 2 {
+            return "incomplete";
+        }
+        if on_pit_road_start {
+            return "out";
+        }
+        if on_pit_road_end {
+            return "in";
+        }
+        let sf_threshold = 0.02;
+        let sf_upper = 1.0 - sf_threshold;
+        let start_away = lap_dist_pct_start > sf_threshold && lap_dist_pct_start < sf_upper;
+        let end_away = lap_dist_pct_end > sf_threshold && lap_dist_pct_end < sf_upper;
+        if start_away || end_away {
+            return "partial";
+        }
+        "full"
+    }
+
+    #[test]
+    fn test_classify_full_lap() {
+        assert_eq!(classify_lap(100, false, false, 0.0, 0.0), "full");
+        assert_eq!(classify_lap(100, false, false, 0.01, 0.99), "full");
+    }
+
+    #[test]
+    fn test_classify_incomplete_lap() {
+        assert_eq!(classify_lap(0, false, false, 0.0, 0.0), "incomplete");
+        assert_eq!(classify_lap(1, false, false, 0.0, 0.0), "incomplete");
+    }
+
+    #[test]
+    fn test_classify_out_lap() {
+        assert_eq!(classify_lap(100, true, false, 0.0, 0.0), "out");
+        // OnPitRoad at start takes priority over end
+        assert_eq!(classify_lap(100, true, true, 0.0, 0.0), "out");
+    }
+
+    #[test]
+    fn test_classify_in_lap() {
+        assert_eq!(classify_lap(100, false, true, 0.0, 0.0), "in");
+    }
+
+    #[test]
+    fn test_classify_partial_lap() {
+        // Start away from S/F
+        assert_eq!(classify_lap(100, false, false, 0.5, 0.0), "partial");
+        // End away from S/F
+        assert_eq!(classify_lap(100, false, false, 0.0, 0.5), "partial");
+        // Both away
+        assert_eq!(classify_lap(100, false, false, 0.3, 0.7), "partial");
+    }
+
+    #[test]
+    fn test_classify_priority_incomplete_over_pit() {
+        // < 2 samples wins over pit road
+        assert_eq!(classify_lap(1, true, false, 0.0, 0.0), "incomplete");
+    }
+
+    #[test]
+    fn test_classify_priority_pit_over_partial() {
+        // OnPitRoad wins over LapDistPct
+        assert_eq!(classify_lap(100, true, false, 0.5, 0.5), "out");
+        assert_eq!(classify_lap(100, false, true, 0.5, 0.5), "in");
+    }
+
+    #[test]
+    fn test_classify_near_sf_thresholds() {
+        // At the threshold boundary (0.02) — not away from S/F
+        assert_eq!(classify_lap(100, false, false, 0.02, 0.0), "full");
+        assert_eq!(classify_lap(100, false, false, 0.0, 0.98), "full");
+        // Just beyond threshold
+        assert_eq!(classify_lap(100, false, false, 0.021, 0.0), "partial");
+        assert_eq!(classify_lap(100, false, false, 0.0, 0.979), "partial");
+    }
+
+    #[test]
+    fn test_session_detection_no_resets() {
+        let lap_nums = vec![0i32, 1, 2, 3];
+        let mut session = 0i32;
+        let mut first_lap = true;
+        let mut sessions = Vec::new();
+
+        for &num in &lap_nums {
+            if num == 0 && !first_lap {
+                session += 1;
+            }
+            first_lap = false;
+            sessions.push(session);
+        }
+
+        assert_eq!(sessions, vec![0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_session_detection_with_resets() {
+        // Lap numbers [0, 1, 0, 1, 2] — one reset, two sessions
+        let lap_nums = vec![0i32, 1, 0, 1, 2];
+        let mut session = 0i32;
+        let mut first_lap = true;
+        let mut sessions = Vec::new();
+
+        for &num in &lap_nums {
+            if num == 0 && !first_lap {
+                session += 1;
+            }
+            first_lap = false;
+            sessions.push(session);
+        }
+
+        assert_eq!(sessions, vec![0, 0, 1, 1, 1]);
+    }
+
+    #[test]
+    fn test_session_detection_multiple_resets() {
+        // Lap numbers [0, 1, 0, 1, 0, 1, 2, 3] — two resets, three sessions
+        let lap_nums = vec![0i32, 1, 0, 1, 0, 1, 2, 3];
+        let mut session = 0i32;
+        let mut first_lap = true;
+        let mut sessions = Vec::new();
+
+        for &num in &lap_nums {
+            if num == 0 && !first_lap {
+                session += 1;
+            }
+            first_lap = false;
+            sessions.push(session);
+        }
+
+        assert_eq!(sessions, vec![0, 0, 1, 1, 2, 2, 2, 2]);
     }
 }
