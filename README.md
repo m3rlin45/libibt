@@ -183,7 +183,16 @@ Each element channel carries the variable's metadata (units, desc, interpolate).
 
 ### GPS utilities
 
-IBT files carry GPS position as the `Lat` (deg), `Lon` (deg), and `Alt` (m) channels. The `libibt.gps` module provides coordinate conversions and GPS-based lap detection:
+IBT files carry GPS position as the `Lat` (deg), `Lon` (deg), and `Alt` (m) channels — available as the `GPS_CHANNEL_NAMES` constant:
+
+```python
+from libibt import ibt, GPS_CHANNEL_NAMES
+
+log = ibt('session.ibt')
+gps_log = log.select_channels(GPS_CHANNEL_NAMES)
+```
+
+The `libibt.gps` module provides coordinate conversions and GPS-based lap detection:
 
 ```python
 import numpy as np
