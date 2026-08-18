@@ -31,7 +31,8 @@ Requires a Rust toolchain (for maturin) and [uv](https://docs.astral.sh/uv/).
 ```python
 from libibt import ibt
 
-# Load from file path, bytes, PathLike, or file-like object
+# Load from file path, PathLike, bytes-like (bytes, bytearray, memoryview),
+# or file-like object
 log = ibt('session.ibt')
 
 print(log)
