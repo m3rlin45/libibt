@@ -170,9 +170,16 @@ Metadata is preserved through all `LogFile` operations (filtering, resampling, m
 | `car_setup` | Full car setup dict |
 | `sectors` | Sector split definitions |
 
-## Limitations
+### Array variables
 
-Array variables (count > 1, e.g. tire temperature arrays) are not yet supported. Only scalar variables are returned as channels.
+Array variables (count > 1, e.g. the 360 Hz `_ST` sub-sample arrays) are expanded into one channel per element, named with a bracketed index:
+
+```python
+log.channels['SteeringWheelTorque_ST[0]']  # first element
+log.channels['SteeringWheelTorque_ST[5]']  # last element
+```
+
+Each element channel carries the variable's metadata (units, desc, interpolate).
 
 ## Development
 

@@ -42,15 +42,12 @@ def rust_logfile():
 class TestHeaderValues:
     def test_num_vars(self, ref_parsed, rust_logfile):
         expected = ref_parsed["header"].numVars
-        # Rust skips array variables (count > 1) in channels dict,
-        # but metadata should still report total numVars via tick_rate presence
-        # We check that the Rust metadata exposes the correct header values
-        # numVars is not directly in metadata, but we verify the channel count
-        # matches the number of scalar (count==1) variables
-        scalar_count = sum(1 for vh in ref_parsed["var_headers"] if vh.count == 1)
-        assert len(rust_logfile.channels) == scalar_count, (
+        # Array variables (count > 1) are expanded into one channel per
+        # element, so the channel count is the sum of all variable counts
+        expected_channels = sum(vh.count for vh in ref_parsed["var_headers"])
+        assert len(rust_logfile.channels) == expected_channels, (
             f"Channel count mismatch: Rust has {len(rust_logfile.channels)}, "
-            f"expected {scalar_count} scalar vars (of {expected} total)"
+            f"expected {expected_channels} (from {expected} vars)"
         )
 
     def test_tick_rate(self, ref_parsed, rust_logfile):
@@ -136,9 +133,14 @@ class TestTimecodes:
 
 
 class TestChannelPresence:
-    def test_all_scalar_channels_present(self, ref_parsed, rust_logfile):
-        """Every scalar (count==1) variable from the reference should be a channel."""
-        expected_names = {vh.name for vh in ref_parsed["var_headers"] if vh.count == 1}
+    def test_all_channels_present(self, ref_parsed, rust_logfile):
+        """Every variable from the reference should appear as channel(s)."""
+        expected_names = set()
+        for vh in ref_parsed["var_headers"]:
+            if vh.count == 1:
+                expected_names.add(vh.name)
+            else:
+                expected_names.update(f"{vh.name}[{i}]" for i in range(vh.count))
         actual_names = set(rust_logfile.channels.keys())
         assert actual_names == expected_names
 

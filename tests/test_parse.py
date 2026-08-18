@@ -8,7 +8,8 @@ TEST_FILE = "tests/test_data/test.ibt"
 
 def test_channel_count():
     log = ibt(TEST_FILE)
-    assert len(log.channels) == 273
+    # 273 scalar variables + 6 elements of SteeringWheelTorque_ST
+    assert len(log.channels) == 279
 
 
 def test_record_count_per_channel():

@@ -68,5 +68,5 @@ Always use `uv run` for Python commands, never bare `python` or `pytest`.
 - **Timecodes**: int64 milliseconds throughout
 - **Channels**: each is a 2-column PyArrow table (`timecodes` + value), with field metadata accessed via `ChannelMetadata` (frozen dataclass with `units: str`, `desc: str`, `interpolate: bool`; constructed via `from_field()`, `from_channel_table()`, serialized via `to_field_metadata()`)
 - **Laps**: PyArrow table with columns `num`, `start_time`, `end_time` (all ms)
-- **Array variables** (count > 1) are not yet supported — only scalar variables become channels
+- **Array variables** (count > 1) are expanded into one channel per element, named `Name[i]`
 - **LogFile methods are immutable** — filtering/resampling returns new instances

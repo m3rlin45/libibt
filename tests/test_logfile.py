@@ -112,8 +112,8 @@ def test_filter_by_lap_rows_consistent():
 def test_get_channels_as_table():
     log = ibt(TEST_FILE)
     merged = log.get_channels_as_table()
-    # Should have timecodes + 273 channels = 274 columns
-    assert merged.num_columns == 274
+    # Should have timecodes + 279 channels = 280 columns
+    assert merged.num_columns == 280
     assert len(merged) == 65642
     assert "timecodes" in merged.column_names
     assert "Speed" in merged.column_names

@@ -86,12 +86,12 @@ class TestHeaderValues:
         assert isclose(actual, expected, rel_tol=1e-12)
 
     def test_num_vars(self, pyirsdk_ibt, rust_logfile):
-        """Rust skips array variables, so channel count should match scalar var count."""
+        """Array variables expand per element, so channel count is the sum of counts."""
         total_vars = pyirsdk_ibt._header.num_vars
-        scalar_count = sum(1 for vh in pyirsdk_ibt._var_headers if vh.count == 1)
-        assert len(rust_logfile.channels) == scalar_count, (
+        expected_channels = sum(vh.count for vh in pyirsdk_ibt._var_headers)
+        assert len(rust_logfile.channels) == expected_channels, (
             f"Channel count mismatch: Rust has {len(rust_logfile.channels)}, "
-            f"expected {scalar_count} scalar vars (of {total_vars} total)"
+            f"expected {expected_channels} (from {total_vars} vars)"
         )
 
 
@@ -99,9 +99,14 @@ class TestHeaderValues:
 
 
 class TestChannelNames:
-    def test_all_scalar_channels_present(self, pyirsdk_ibt, rust_logfile):
-        """Every scalar (count==1) variable from pyirsdk should be in libibt."""
-        expected_names = {vh.name for vh in pyirsdk_ibt._var_headers if vh.count == 1}
+    def test_all_channels_present(self, pyirsdk_ibt, rust_logfile):
+        """Every variable from pyirsdk should appear as channel(s) in libibt."""
+        expected_names = set()
+        for vh in pyirsdk_ibt._var_headers:
+            if vh.count == 1:
+                expected_names.add(vh.name)
+            else:
+                expected_names.update(f"{vh.name}[{i}]" for i in range(vh.count))
         actual_names = set(rust_logfile.channels.keys())
         assert actual_names == expected_names
 
