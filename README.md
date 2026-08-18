@@ -181,6 +181,36 @@ log.channels['SteeringWheelTorque_ST[5]']  # last element
 
 Each element channel carries the variable's metadata (units, desc, interpolate).
 
+### GPS utilities
+
+IBT files carry GPS position as the `Lat` (deg), `Lon` (deg), and `Alt` (m) channels. The `libibt.gps` module provides coordinate conversions and GPS-based lap detection:
+
+```python
+import numpy as np
+from libibt import ibt
+from libibt import gps
+
+log = ibt('session.ibt')
+lat = log.channels['Lat'].column('Lat').to_numpy()
+lon = log.channels['Lon'].column('Lon').to_numpy()
+timecodes = log.channels['Lat'].column('timecodes').to_numpy()
+
+# Convert to ECEF coordinates (meters). Lap detection treats the track as
+# altitude 0, so pass alt=0 rather than the Alt channel.
+XYZ = np.stack(gps.lla2ecef(lat, lon, 0.0), axis=1)
+
+# Detect start/finish crossings from a (lat, lon) marker — returns crossing
+# times in ms, interpolated between samples
+crossings = gps.find_laps(XYZ, timecodes, marker=(lat[0], lon[0]))
+
+# Other helpers
+gps.llz2web(lat, lon)            # lat/lon -> web mercator tile coordinates
+gps.web2ll(x, y)                 # web mercator -> lat/lon
+gps.ecef2lla(x, y, z)            # ECEF -> (lat, long, alt) namedtuple
+gps.find_crossing_idx(XYZ, m)    # fractional index where a path crosses a marker
+gps.ecef_velocity_to_enu(dx, dy, dz, lat_rad, lon_rad)  # -> (east, north)
+```
+
 ## Development
 
 ```bash
@@ -199,6 +229,10 @@ just check
 # Format code
 just format
 ```
+
+## Credits
+
+The GPS utilities are adapted from [libxrk](https://github.com/m3rlin45/libxrk), which incorporates code from [TrackDataAnalysis](https://github.com/racer-coder/TrackDataAnalysis) by Scott Smith, used under the MIT License.
 
 ## License
 
