@@ -135,7 +135,10 @@ mod arrow_ext {
 
     use arrow::array::{Int64Array, RecordBatch};
 
-    use crate::channel::{build_channel_batch, build_laps_batch, LapRecord};
+    use crate::channel::{
+        build_element_batch, build_laps_batch, build_subsample_channel_batch, build_var_batches,
+        parse_element_name, LapRecord,
+    };
     use crate::error::{IbtError, Result};
     use crate::var_header::{VarHeader, VarType};
 
@@ -171,28 +174,69 @@ mod arrow_ext {
             Ok(Arc::new(Int64Array::from(values)))
         }
 
+        /// True if this array variable holds time sub-samples (iRacing `_ST`
+        /// convention: `count` samples per tick at `tick_rate * count` Hz).
+        fn is_subsample_var(&self, var: &VarHeader) -> bool {
+            var.count > 1 && var.name.ends_with("_ST") && self.tick_rate() > 0
+        }
+
         /// Build an Arrow RecordBatch for a single channel.
+        ///
+        /// Accepts scalar variable names ("Speed"), time-subsample array
+        /// names ("SteeringWheelTorque_ST" — merged into one higher-rate
+        /// channel), and array element names ("CarIdxLapTime[2]").
         pub fn channel_to_arrow(
             &self,
             var_name: &str,
             timecodes: &Arc<Int64Array>,
         ) -> Result<RecordBatch> {
-            let var = self
-                .var_by_name(var_name)
-                .ok_or_else(|| IbtError::OutOfBounds(format!("Variable not found: {}", var_name)))?
-                .clone();
+            let (var, element) = match self.var_by_name(var_name) {
+                Some(var) if var.count == 1 => (var.clone(), 0),
+                Some(var) if self.is_subsample_var(var) => {
+                    return build_subsample_channel_batch(
+                        var,
+                        timecodes,
+                        self.records_data()?,
+                        self.buf_len(),
+                        self.record_count(),
+                        self.tick_rate(),
+                    )
+                }
+                Some(var) => {
+                    return Err(IbtError::OutOfBounds(format!(
+                        "'{}' is an array variable with {} elements; use '{}[i]'",
+                        var_name, var.count, var_name
+                    )))
+                }
+                None => {
+                    let (base, element) = parse_element_name(var_name).ok_or_else(|| {
+                        IbtError::OutOfBounds(format!("Variable not found: {}", var_name))
+                    })?;
+                    let var = self.var_by_name(base).ok_or_else(|| {
+                        IbtError::OutOfBounds(format!("Variable not found: {}", var_name))
+                    })?;
+                    (var.clone(), element)
+                }
+            };
 
-            build_channel_batch(
+            build_element_batch(
                 var_name,
                 timecodes,
                 &var,
+                element,
                 self.records_data()?,
                 self.buf_len(),
                 self.record_count(),
             )
         }
 
-        /// Build Arrow RecordBatches for all scalar channels.
+        /// Build Arrow RecordBatches for all channels.
+        ///
+        /// Scalar variables produce one channel each. Time-subsample arrays
+        /// (`_ST` suffix) are merged into a single higher-rate channel under
+        /// the variable's name. Other array variables (count > 1, e.g.
+        /// per-car `CarIdx` arrays) are expanded into one channel per
+        /// element, named `Name[0]`, `Name[1]`, ...
         pub fn all_channels_to_arrow(
             &self,
             timecodes: &Arc<Int64Array>,
@@ -201,21 +245,29 @@ mod arrow_ext {
             let buf_len = self.buf_len();
             let record_count = self.record_count();
 
-            self.var_headers
-                .iter()
-                .filter(|var| var.count == 1) // skip array variables
-                .map(|var| {
-                    let batch = build_channel_batch(
-                        &var.name,
-                        timecodes,
+            let mut channels = Vec::new();
+            for var in &self.var_headers {
+                if self.is_subsample_var(var) {
+                    let batch = build_subsample_channel_batch(
                         var,
+                        timecodes,
                         records,
                         buf_len,
                         record_count,
+                        self.tick_rate(),
                     )?;
-                    Ok((var.name.clone(), batch))
-                })
-                .collect()
+                    channels.push((var.name.clone(), batch));
+                } else {
+                    channels.extend(build_var_batches(
+                        var,
+                        timecodes,
+                        records,
+                        buf_len,
+                        record_count,
+                    )?);
+                }
+            }
+            Ok(channels)
         }
 
         /// Read a bool variable's values from raw records.

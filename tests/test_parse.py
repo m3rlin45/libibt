@@ -8,13 +8,18 @@ TEST_FILE = "tests/test_data/test.ibt"
 
 def test_channel_count():
     log = ibt(TEST_FILE)
-    assert len(log.channels) == 273
+    # 273 scalar variables + the merged SteeringWheelTorque_ST channel
+    assert len(log.channels) == 274
 
 
 def test_record_count_per_channel():
     log = ibt(TEST_FILE)
     for name, table in log.channels.items():
-        assert len(table) == 65642, f"Channel {name} has {len(table)} rows, expected 65642"
+        if name.endswith("_ST"):
+            # time-subsample channels run at a multiple of the tick rate
+            assert len(table) % 65642 == 0 and len(table) > 65642
+        else:
+            assert len(table) == 65642, f"Channel {name} has {len(table)} rows, expected 65642"
 
 
 def test_tick_rate():

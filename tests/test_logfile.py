@@ -100,10 +100,18 @@ def test_filter_by_lap_invalid_raises():
 def test_filter_by_lap_rows_consistent():
     log = ibt(TEST_FILE)
     lap0 = log.filter_by_lap(0)
-    # Every channel should have the same number of rows (same timebase)
-    row_counts = {name: len(t) for name, t in lap0.channels.items()}
-    counts = set(row_counts.values())
+    # Every tick-rate channel should have the same number of rows; merged
+    # _ST channels run at a multiple of the tick rate
+    tick_counts = {name: len(t) for name, t in lap0.channels.items() if not name.endswith("_ST")}
+    counts = set(tick_counts.values())
     assert len(counts) == 1, f"Inconsistent row counts across channels in lap 0: {counts}"
+    tick_rows = counts.pop()
+    for name, table in lap0.channels.items():
+        if name.endswith("_ST"):
+            # rows ~= sub-sample multiple of tick rows (boundary sub-samples
+            # of the first tick may fall just outside the lap's time range)
+            multiple = round(len(log.channels[name]) / len(log.channels["Speed"]))
+            assert abs(len(table) - multiple * tick_rows) <= multiple
 
 
 # --- get_channels_as_table ---
@@ -112,9 +120,11 @@ def test_filter_by_lap_rows_consistent():
 def test_get_channels_as_table():
     log = ibt(TEST_FILE)
     merged = log.get_channels_as_table()
-    # Should have timecodes + 273 channels = 274 columns
-    assert merged.num_columns == 274
-    assert len(merged) == 65642
+    # Should have timecodes + 274 channels = 275 columns
+    assert merged.num_columns == 275
+    # The union timebase is the 360 Hz _ST sub-sample grid (which includes
+    # every 60 Hz tick): 6 rows per record
+    assert len(merged) == 65642 * 6
     assert "timecodes" in merged.column_names
     assert "Speed" in merged.column_names
 

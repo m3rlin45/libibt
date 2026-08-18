@@ -13,9 +13,9 @@ fn _libibt_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 /// Parse an iRacing IBT file and return a LogFile.
 ///
-/// Note: Array variables (those with count > 1, e.g. tire temp arrays)
-/// are not included as channels. Only scalar (count == 1) variables are
-/// returned.
+/// Time-subsample arrays (`_ST` suffix) are merged into a single
+/// higher-rate channel; other array variables (count > 1) are expanded
+/// into one channel per element, named `Name[0]`, `Name[1]`, ...
 #[pyfunction]
 #[pyo3(signature = (source, progress=None))]
 fn ibt(py: Python<'_>, source: Py<PyAny>, progress: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {

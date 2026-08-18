@@ -170,9 +170,24 @@ Metadata is preserved through all `LogFile` operations (filtering, resampling, m
 | `car_setup` | Full car setup dict |
 | `sectors` | Sector split definitions |
 
-## Limitations
+### Array variables
 
-Array variables (count > 1, e.g. tire temperature arrays) are not yet supported. Only scalar variables are returned as channels.
+Time-subsample arrays (`_ST` suffix, recorded at `tick_rate × count` Hz — e.g. 6 samples per 60 Hz tick = 360 Hz) are merged into a single higher-rate channel under the variable's name:
+
+```python
+torque = log.channels['SteeringWheelTorque_ST']  # 360 Hz, 6x the rows
+```
+
+Sub-sample timecodes are interleaved between ticks, with the last sub-sample of each tick aligned with the tick's timestamp.
+
+Other array variables (count > 1 where the index is not time, e.g. the per-car `CarIdx` arrays) are expanded into one channel per element, named with a bracketed index:
+
+```python
+log.channels['CarIdxLapTime[0]']   # car index 0
+log.channels['CarIdxLapTime[63]']  # car index 63
+```
+
+All produced channels carry the variable's metadata (units, desc, interpolate).
 
 ## Development
 
