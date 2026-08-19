@@ -192,6 +192,17 @@ car12 = values[:, 12]  # one car's trace
 
 Vector channels work with all `LogFile` operations, including resampling (interpolation and forward-fill are applied per element). All channels carry the variable's metadata (units, desc, interpolate).
 
+### GPS channels
+
+IBT files carry GPS position as the `Lat` (deg), `Lon` (deg), and `Alt` (m) channels — available as the `GPS_CHANNEL_NAMES` constant:
+
+```python
+from libibt import ibt, GPS_CHANNEL_NAMES
+
+log = ibt('session.ibt')
+gps_log = log.select_channels(GPS_CHANNEL_NAMES)
+```
+
 ## Development
 
 ```bash
