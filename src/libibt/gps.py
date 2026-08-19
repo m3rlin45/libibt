@@ -26,6 +26,13 @@ from collections import namedtuple
 
 import numpy as np
 
+# GPS position channels recorded in iRacing IBT files
+GPS_CHANNEL_NAMES = (
+    "Lat",
+    "Lon",
+    "Alt",
+)
+
 GPS = namedtuple("GPS", ["lat", "long", "alt"])
 
 

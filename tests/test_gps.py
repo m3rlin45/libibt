@@ -9,6 +9,25 @@ from libibt import gps
 TEST_FILE = "tests/test_data/test.ibt"
 
 
+# ── GPS_CHANNEL_NAMES ─────────────────────────────────────────────────
+
+
+def test_gps_channel_names_exported():
+    from libibt import GPS_CHANNEL_NAMES
+
+    assert GPS_CHANNEL_NAMES == ("Lat", "Lon", "Alt")
+
+
+def test_gps_channels_present_in_file():
+    from libibt import GPS_CHANNEL_NAMES
+
+    log = ibt(TEST_FILE)
+    for name in GPS_CHANNEL_NAMES:
+        assert name in log.channels, f"Missing GPS channel: {name}"
+    gps_log = log.select_channels(GPS_CHANNEL_NAMES)
+    assert set(gps_log.channels.keys()) == set(GPS_CHANNEL_NAMES)
+
+
 # ── Coordinate conversions ────────────────────────────────────────────
 
 
