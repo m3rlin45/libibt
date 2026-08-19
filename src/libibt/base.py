@@ -9,6 +9,13 @@ import numpy as np
 if sys.byteorder != "little":
     raise RuntimeError("libibt requires a little-endian platform")
 
+# GPS position channels recorded in iRacing IBT files
+GPS_CHANNEL_NAMES = (
+    "Lat",
+    "Lon",
+    "Alt",
+)
+
 
 @dataclass(frozen=True)
 class ChannelMetadata:
