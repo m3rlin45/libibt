@@ -89,8 +89,10 @@ impl IbtHeader {
             status: read_i32(data, 4),
             tick_rate: read_i32(data, 8),
             session_info_update: read_i32(data, 12),
-            session_info_offset: read_i32(data, 16),
-            session_info_len: read_i32(data, 20),
+            // irsdk stores sessionInfoLen at byte 16 and sessionInfoOffset
+            // at byte 20 (see irsdk_defines.h)
+            session_info_len: read_i32(data, 16),
+            session_info_offset: read_i32(data, 20),
             num_vars: read_i32(data, 24),
             var_header_offset: read_i32(data, 28),
             num_buf: read_i32(data, 32),
@@ -143,5 +145,20 @@ mod tests {
         let mut data = vec![0u8; 112];
         data[0] = 99;
         assert!(IbtHeader::parse(&data).is_err());
+    }
+
+    #[test]
+    fn test_session_info_len_and_offset_field_order() {
+        // irsdk_defines.h: sessionInfoLen at byte 16, sessionInfoOffset at
+        // byte 20. These were once read swapped — masked on real files
+        // because extract_session_yaml scans for the "---" marker inside
+        // the (identically-ended) window.
+        let mut data = vec![0u8; 112];
+        data[0] = 2; // ver
+        data[16..20].copy_from_slice(&111i32.to_le_bytes()); // sessionInfoLen
+        data[20..24].copy_from_slice(&222i32.to_le_bytes()); // sessionInfoOffset
+        let header = IbtHeader::parse(&data).unwrap();
+        assert_eq!(header.session_info_len, 111);
+        assert_eq!(header.session_info_offset, 222);
     }
 }
