@@ -52,7 +52,13 @@ def test_timecodes_consistent_across_channels():
     ref_tc = log.channels["Speed"].column("timecodes").to_pylist()
     for name, table in log.channels.items():
         tc = table.column("timecodes").to_pylist()
-        assert tc == ref_tc, f"Channel {name} timecodes differ from Speed"
+        if name.endswith("_ST"):
+            # merged sub-sample channels run at a multiple of the tick rate,
+            # with each tick's last sub-sample on the tick timestamp
+            count = len(tc) // len(ref_tc)
+            assert tc[count - 1 :: count] == ref_tc, f"Channel {name} tick timecodes differ"
+        else:
+            assert tc == ref_tc, f"Channel {name} timecodes differ from Speed"
 
 
 def test_speed_range():
