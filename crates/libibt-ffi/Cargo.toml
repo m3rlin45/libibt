@@ -1,0 +1,16 @@
+[package]
+name = "libibt-ffi"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "C ABI for libibt: sessions as opaque handles, channels and laps via the Arrow C Data Interface, metadata as JSON"
+
+[lib]
+name = "ibt_ffi"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+libibt = { path = "../libibt", features = ["arrow"] }
+arrow = { workspace = true, features = ["ffi"] }
+serde_json = "1"
