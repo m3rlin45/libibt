@@ -3,6 +3,7 @@ pub mod header;
 pub mod metadata;
 pub mod reader;
 pub mod session_info;
+pub mod session_yaml;
 pub mod var_header;
 
 #[cfg(feature = "arrow")]
@@ -10,7 +11,7 @@ pub mod channel;
 
 pub use error::{IbtError, Result};
 pub use header::{DiskSubHeader, IbtHeader};
-pub use metadata::MetadataValue;
+pub use metadata::{Date, DateTime, MetadataValue};
 pub use reader::IbtFile;
 pub use var_header::{VarHeader, VarType};
 

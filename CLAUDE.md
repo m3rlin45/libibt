@@ -24,7 +24,8 @@ crates/libibt/                           # Pure Rust core (publishable to crates
     reader.rs       — IbtFile: mmap, header parsing, channel extraction
     channel.rs      — Arrow RecordBatch construction (feature-gated behind `arrow`)
     session_info.rs — Session YAML extraction
-    metadata.rs     — Metadata document: keys, order and value types shared by every binding
+    session_yaml.rs — Session-info YAML loader with PyYAML's (YAML 1.1) typing
+    metadata.rs     — Metadata document: keys, order and values shared by every binding, incl. the parsed YAML and the entries derived from it
 
 crates/libibt-python/                    # PyO3 bindings (publish = false)
   src/
@@ -42,6 +43,7 @@ tests/
   test_channels.py          — Channel data tests
   test_channel_metadata.py  — ChannelMetadata roundtrip and preservation tests
   test_logfile.py           — LogFile method tests
+  test_session_yaml.py      — Rust YAML loader and derived metadata vs PyYAML
 ```
 
 ## Build and test
@@ -62,7 +64,7 @@ Always use `uv run` for Python commands, never bare `python` or `pytest`.
 ## Key details
 
 - **Python >=3.10**, Rust 2021 edition
-- **Dependencies**: pyarrow, numpy (version-constrained by Python version), pyyaml
+- **Dependencies**: pyarrow, numpy (version-constrained by Python version). PyYAML is a test dependency only: the session-info YAML is parsed in Rust
 - **Build system**: maturin (configured in pyproject.toml)
 - **Formatter**: Black (line-length 100)
 - **Type checker**: mypy (strict optional, check untyped defs)
@@ -71,3 +73,4 @@ Always use `uv run` for Python commands, never bare `python` or `pytest`.
 - **Laps**: PyArrow table with columns `num`, `start_time`, `end_time` (all ms)
 - **Array variables** (count > 1): `_ST` time-subsample arrays are merged into one higher-rate channel under the variable's name; other arrays (e.g. per-car `CarIdx*`) become vector-valued channels whose value column is a `FixedSizeList` (one vector per tick)
 - **LogFile methods are immutable** — filtering/resampling returns new instances
+- **Metadata is built in Rust** (`IbtFile::metadata_entries`), including `session_info` (the parsed session-info YAML) and the keys derived from it. `session_yaml.rs` reproduces PyYAML's `safe_load` typing (`yes`/`off` are bools, `1:30` is 90, `2026-02-27` is a date); `tests/test_session_yaml.py` checks it against PyYAML. Change the typing rules only together with that test
