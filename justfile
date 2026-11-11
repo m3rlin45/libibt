@@ -39,6 +39,22 @@ build-debug:
     #!/usr/bin/env bash
     source $HOME/.cargo/env && uv run maturin develop
 
+# Build the C ABI library for non-Python consumers
+# (target/release/libibt_ffi.so, libibt_ffi.dylib or ibt_ffi.dll)
+ffi-build:
+    cargo build --release -p libibt-ffi
+
+# Check the C ABI against the Python LogFile on every fixture
+ffi-test: ffi-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "$(uname -s)" in
+        Darwin) lib=libibt_ffi.dylib ;;
+        MINGW*|MSYS*|CYGWIN*) lib=ibt_ffi.dll ;;
+        *) lib=libibt_ffi.so ;;
+    esac
+    LIBIBT_FFI_LIB="target/release/$lib" uv run pytest tests/test_ffi.py -v
+
 # Interactive REPL with a loaded IBT file
 repl:
     uv run python -i -c "from libibt import ibt; log = ibt('formulair04_phillipisland 2026-02-27 20-40-38.ibt'); print('IBT file loaded as: log'); print(f'Channels: {len(log.channels)}'); print(f'Laps: {len(log.laps)}'); print(f'Metadata keys: {list(log.metadata.keys())}')"

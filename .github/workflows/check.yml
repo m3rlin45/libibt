@@ -36,6 +36,16 @@ jobs:
       - name: Rust tests
         run: cargo test
 
+      # The C ABI library (crates/libibt-ffi). A debug build, which the Rust
+      # tests have all but compiled already. Setting LIBIBT_FFI_LIB makes the
+      # Python tests below run tests/test_ffi.py against it instead of
+      # skipping it.
+      - name: Build the C ABI library
+        run: |
+          cargo build -p libibt-ffi
+          test -f target/debug/libibt_ffi.so
+          echo "LIBIBT_FFI_LIB=target/debug/libibt_ffi.so" >> "$GITHUB_ENV"
+
       - name: Install Python dependencies
         run: uv sync
 

@@ -1,0 +1,17 @@
+[package]
+name = "libibt-ffi"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "C ABI for libibt: sessions as opaque handles, channels and laps via the Arrow C Data Interface, metadata as JSON"
+
+[lib]
+name = "ibt_ffi"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+libibt = { path = "../libibt", features = ["arrow"] }
+arrow = { workspace = true, features = ["ffi"] }
+# preserve_order: the metadata JSON keeps the key order of the Python dict.
+serde_json = { version = "1", features = ["preserve_order"] }
