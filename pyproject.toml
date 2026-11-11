@@ -1,6 +1,7 @@
 [project]
 name = "libibt"
-version = "0.0.6"
+# The version comes from the Rust workspace (Cargo.toml, [workspace.package]).
+dynamic = ["version"]
 description = "Library for reading iRacing IBT telemetry files"
 license = "MIT"
 authors = [

@@ -1,6 +1,12 @@
 [workspace]
-members = ["crates/libibt", "crates/libibt-python"]
+members = ["crates/libibt", "crates/libibt-python", "crates/libibt-ffi"]
 resolver = "2"
+
+[workspace.package]
+# The one version of the project. The three crates inherit it, and the Python
+# package takes it from crates/libibt-python (pyproject.toml declares its
+# version dynamic), so a release bumps this line and nothing else.
+version = "0.2.0"
 
 [workspace.dependencies]
 arrow = { version = "57", default-features = false }

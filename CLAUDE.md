@@ -10,7 +10,7 @@ Python library for reading iRacing IBT telemetry files. Rust core parses the bin
 
 ## Architecture
 
-Cargo workspace with two crates: a publishable pure-Rust core and PyO3 bindings.
+Cargo workspace with three crates: a publishable pure-Rust core, PyO3 bindings, and a C ABI.
 
 ```
 Cargo.toml                              # Workspace root
@@ -31,6 +31,12 @@ crates/libibt-python/                    # PyO3 bindings (publish = false)
   src/
     lib.rs          — ibt() entry point, open_source(), build_metadata()
 
+crates/libibt-ffi/                       # C ABI for non-Python consumers (publish = false)
+  src/
+    lib.rs          — ibt_* functions: sessions, Arrow C streams, metadata JSON
+  tests/
+    roundtrip.rs    — Drives the C ABI like a foreign caller
+
 src/libibt/
   __init__.py     — Public API: ibt(), ChannelMetadata, LogFile
   base.py         — ChannelMetadata frozen dataclass, LogFile dataclass
@@ -44,6 +50,7 @@ tests/
   test_channel_metadata.py  — ChannelMetadata roundtrip and preservation tests
   test_logfile.py           — LogFile method tests
   test_session_yaml.py      — Rust YAML loader and derived metadata vs PyYAML
+  test_ffi.py               — C ABI vs LogFile parity (needs LIBIBT_FFI_LIB)
 ```
 
 ## Build and test
@@ -61,11 +68,39 @@ just clippy              # Rust lints
 
 Always use `uv run` for Python commands, never bare `python` or `pytest`.
 
+## C ABI (`crates/libibt-ffi`)
+
+`libibt-ffi` builds the Rust core as a shared library (`ibt_ffi`) for callers
+that are not Python; the C# Inferno Analyzer in motorsports_data_notebook is
+the consumer. A session is opened from a path or bytes, each channel and the
+laps table come out through the Arrow C Data Interface (`ArrowArrayStream`),
+and the metadata comes out as JSON. The ten `ibt_*` functions and their
+ownership rules are documented in `crates/libibt-ffi/src/lib.rs`.
+
+**The contract is "what the Python `LogFile` holds":** same channels in the
+same order, same schemas and field metadata, same laps, and the `metadata`
+dict as JSON with the same keys in the same order (dates as ISO 8601 strings).
+`tests/test_ffi.py` asserts that on every fixture by loading the library with
+ctypes; it only runs when `LIBIBT_FFI_LIB` points at the library.
+
+```bash
+just ffi-build       # target/release/libibt_ffi.so (.dylib, or ibt_ffi.dll)
+just ffi-test        # build, then tests/test_ffi.py against the library
+just test-rust       # cargo tests, including the C ABI crate's round trip
+```
+
+Keep the bindings thin. Anything every binding has to agree on lives in the
+core crate, not in `libibt-python`, `libibt-ffi` or `base.py`: the whole
+metadata document (`IbtFile::metadata_entries`, parsed session info included),
+and the channel and laps batches (`all_channels_to_arrow`, `extract_laps`). Changing an `ibt_*`
+signature breaks the consumer, which builds this crate from a pinned commit.
+
 ## Key details
 
 - **Python >=3.10**, Rust 2021 edition
 - **Dependencies**: pyarrow, numpy (version-constrained by Python version). PyYAML is a test dependency only: the session-info YAML is parsed in Rust
 - **Build system**: maturin (configured in pyproject.toml)
+- **Version**: defined once, as `version` under `[workspace.package]` in the root `Cargo.toml`. The three crates inherit it (`version.workspace = true`) and maturin gives the Python package the same one (`dynamic = ["version"]` in `pyproject.toml`). To release, change that one line
 - **Formatter**: Black (line-length 100)
 - **Type checker**: mypy (strict optional, check untyped defs)
 - **Timecodes**: int64 milliseconds throughout

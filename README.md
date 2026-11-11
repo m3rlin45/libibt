@@ -203,6 +203,46 @@ log = ibt('session.ibt')
 gps_log = log.select_channels(GPS_CHANNEL_NAMES)
 ```
 
+## Using libibt from other languages
+
+`crates/libibt-ffi` builds the Rust parser as a shared library with a small C
+ABI, for programs that are not Python. It hands out what the Python `LogFile`
+holds: each channel and the laps table as Arrow record batches through the
+[Arrow C Data Interface](https://arrow.apache.org/docs/format/CDataInterface.html)
+(`ArrowArrayStream`), and the metadata as a JSON document.
+
+```bash
+just ffi-build    # target/release/libibt_ffi.so, libibt_ffi.dylib or ibt_ffi.dll
+```
+
+```c
+char *err = NULL;
+IbtSession *session = ibt_open_path("session.ibt", &err);   /* or ibt_open_bytes */
+if (!session) { fprintf(stderr, "%s\n", err); ibt_string_free(err); return 1; }
+
+for (size_t i = 0; i < ibt_channel_count(session); i++) {
+    char *name = ibt_channel_name(session, i);
+    struct ArrowArrayStream stream;
+    if (ibt_channel_stream(session, i, &stream) == 0) {
+        /* one record batch: "timecodes" (int64 ms) and the channel's values */
+        stream.release(&stream);
+    }
+    ibt_string_free(name);
+}
+
+char *metadata = ibt_metadata_json(session);   /* the LogFile.metadata dict */
+ibt_string_free(metadata);
+ibt_close(session);
+```
+
+The metadata document has the keys of `log.metadata` (the table above), in the
+same order, including the parsed `session_info`. JSON has no date type, so the
+dates in the session info are ISO 8601 strings.
+
+The functions, their error values and the ownership rules are documented in
+[`crates/libibt-ffi/src/lib.rs`](crates/libibt-ffi/src/lib.rs). There is no
+released binary yet: build the crate from a pinned commit.
+
 ## Development
 
 ```bash
