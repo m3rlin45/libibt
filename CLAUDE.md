@@ -49,7 +49,7 @@ tests/
 uv sync                  # Install dependencies
 just build               # Build Rust extension (release)
 just build-debug         # Build Rust extension (debug, faster)
-just test                # uv run pytest tests/ -v
+just test                # uv run pytest tests/ -v -n auto
 just check               # All checks: lint, clippy, typecheck, test-rust, test
 just format              # Black + cargo fmt
 just typecheck           # mypy src/
