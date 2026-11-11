@@ -135,7 +135,10 @@ mod arrow_ext {
 
     use arrow::array::{Int64Array, RecordBatch};
 
-    use crate::channel::{build_channel_batch, build_laps_batch, LapRecord};
+    use crate::channel::{
+        build_channel_batch, build_laps_batch, build_list_channel_batch,
+        build_subsample_channel_batch, LapRecord,
+    };
     use crate::error::{IbtError, Result};
     use crate::var_header::{VarHeader, VarType};
 
@@ -171,7 +174,17 @@ mod arrow_ext {
             Ok(Arc::new(Int64Array::from(values)))
         }
 
+        /// True if this array variable holds time sub-samples (iRacing `_ST`
+        /// convention: `count` samples per tick at `tick_rate * count` Hz).
+        fn is_subsample_var(&self, var: &VarHeader) -> bool {
+            var.count > 1 && var.name.ends_with("_ST") && self.tick_rate() > 0
+        }
+
         /// Build an Arrow RecordBatch for a single channel.
+        ///
+        /// Every variable maps to exactly one channel under its own name:
+        /// scalars, merged higher-rate `_ST` sub-sample channels, and
+        /// vector-valued (FixedSizeList) channels for other arrays.
         pub fn channel_to_arrow(
             &self,
             var_name: &str,
@@ -182,17 +195,33 @@ mod arrow_ext {
                 .ok_or_else(|| IbtError::OutOfBounds(format!("Variable not found: {}", var_name)))?
                 .clone();
 
-            build_channel_batch(
-                var_name,
-                timecodes,
-                &var,
-                self.records_data()?,
-                self.buf_len(),
-                self.record_count(),
-            )
+            let records = self.records_data()?;
+            let buf_len = self.buf_len();
+            let record_count = self.record_count();
+
+            if var.count == 1 {
+                build_channel_batch(var_name, timecodes, &var, records, buf_len, record_count)
+            } else if self.is_subsample_var(&var) {
+                build_subsample_channel_batch(
+                    &var,
+                    timecodes,
+                    records,
+                    buf_len,
+                    record_count,
+                    self.tick_rate(),
+                )
+            } else {
+                build_list_channel_batch(&var, timecodes, records, buf_len, record_count)
+            }
         }
 
-        /// Build Arrow RecordBatches for all scalar channels.
+        /// Build Arrow RecordBatches for all channels.
+        ///
+        /// Every variable maps to exactly one channel under its own name:
+        /// scalars produce plain value columns, time-subsample arrays
+        /// (`_ST` suffix) are merged into a single higher-rate channel, and
+        /// other array variables (count > 1, e.g. per-car `CarIdx` arrays)
+        /// become vector-valued FixedSizeList columns.
         pub fn all_channels_to_arrow(
             &self,
             timecodes: &Arc<Int64Array>,
@@ -201,21 +230,25 @@ mod arrow_ext {
             let buf_len = self.buf_len();
             let record_count = self.record_count();
 
-            self.var_headers
-                .iter()
-                .filter(|var| var.count == 1) // skip array variables
-                .map(|var| {
-                    let batch = build_channel_batch(
-                        &var.name,
-                        timecodes,
+            let mut channels = Vec::new();
+            for var in &self.var_headers {
+                let batch = if var.count == 1 {
+                    build_channel_batch(&var.name, timecodes, var, records, buf_len, record_count)?
+                } else if self.is_subsample_var(var) {
+                    build_subsample_channel_batch(
                         var,
+                        timecodes,
                         records,
                         buf_len,
                         record_count,
-                    )?;
-                    Ok((var.name.clone(), batch))
-                })
-                .collect()
+                        self.tick_rate(),
+                    )?
+                } else {
+                    build_list_channel_batch(var, timecodes, records, buf_len, record_count)?
+                };
+                channels.push((var.name.clone(), batch));
+            }
+            Ok(channels)
         }
 
         /// Read a bool variable's values from raw records.

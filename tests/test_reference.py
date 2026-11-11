@@ -41,16 +41,11 @@ def rust_logfile():
 
 class TestHeaderValues:
     def test_num_vars(self, ref_parsed, rust_logfile):
+        # Every variable maps to exactly one channel under its own name
         expected = ref_parsed["header"].numVars
-        # Rust skips array variables (count > 1) in channels dict,
-        # but metadata should still report total numVars via tick_rate presence
-        # We check that the Rust metadata exposes the correct header values
-        # numVars is not directly in metadata, but we verify the channel count
-        # matches the number of scalar (count==1) variables
-        scalar_count = sum(1 for vh in ref_parsed["var_headers"] if vh.count == 1)
-        assert len(rust_logfile.channels) == scalar_count, (
+        assert len(rust_logfile.channels) == expected, (
             f"Channel count mismatch: Rust has {len(rust_logfile.channels)}, "
-            f"expected {scalar_count} scalar vars (of {expected} total)"
+            f"expected {expected} vars"
         )
 
     def test_tick_rate(self, ref_parsed, rust_logfile):
@@ -136,9 +131,9 @@ class TestTimecodes:
 
 
 class TestChannelPresence:
-    def test_all_scalar_channels_present(self, ref_parsed, rust_logfile):
-        """Every scalar (count==1) variable from the reference should be a channel."""
-        expected_names = {vh.name for vh in ref_parsed["var_headers"] if vh.count == 1}
+    def test_all_channels_present(self, ref_parsed, rust_logfile):
+        """Every variable from the reference should be a channel."""
+        expected_names = {vh.name for vh in ref_parsed["var_headers"]}
         actual_names = set(rust_logfile.channels.keys())
         assert actual_names == expected_names
 
@@ -196,9 +191,12 @@ class TestMetadata:
 
 class TestRecordCountConsistency:
     def test_channel_length_matches_record_count(self, ref_parsed, rust_logfile):
-        """Every channel table should have exactly sessionRecordCount rows."""
+        """Every channel table should have exactly sessionRecordCount rows
+        (times the sub-sample count for merged _ST channels)."""
         expected = ref_parsed["disk_header"].sessionRecordCount
+        counts = {vh.name: vh.count for vh in ref_parsed["var_headers"]}
         for name, table in rust_logfile.channels.items():
+            per_tick = counts[name] if name.endswith("_ST") else 1
             assert (
-                len(table) == expected
-            ), f"Channel '{name}' has {len(table)} rows, expected {expected}"
+                len(table) == expected * per_tick
+            ), f"Channel '{name}' has {len(table)} rows, expected {expected * per_tick}"

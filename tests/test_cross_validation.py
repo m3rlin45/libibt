@@ -86,12 +86,11 @@ class TestHeaderValues:
         assert isclose(actual, expected, rel_tol=1e-12)
 
     def test_num_vars(self, pyirsdk_ibt, rust_logfile):
-        """Rust skips array variables, so channel count should match scalar var count."""
-        total_vars = pyirsdk_ibt._header.num_vars
-        scalar_count = sum(1 for vh in pyirsdk_ibt._var_headers if vh.count == 1)
-        assert len(rust_logfile.channels) == scalar_count, (
+        """Every variable maps to exactly one channel under its own name."""
+        expected = pyirsdk_ibt._header.num_vars
+        assert len(rust_logfile.channels) == expected, (
             f"Channel count mismatch: Rust has {len(rust_logfile.channels)}, "
-            f"expected {scalar_count} scalar vars (of {total_vars} total)"
+            f"expected {expected} vars"
         )
 
 
@@ -99,9 +98,9 @@ class TestHeaderValues:
 
 
 class TestChannelNames:
-    def test_all_scalar_channels_present(self, pyirsdk_ibt, rust_logfile):
-        """Every scalar (count==1) variable from pyirsdk should be in libibt."""
-        expected_names = {vh.name for vh in pyirsdk_ibt._var_headers if vh.count == 1}
+    def test_all_channels_present(self, pyirsdk_ibt, rust_logfile):
+        """Every variable from pyirsdk should be a channel in libibt."""
+        expected_names = {vh.name for vh in pyirsdk_ibt._var_headers}
         actual_names = set(rust_logfile.channels.keys())
         assert actual_names == expected_names
 
@@ -134,12 +133,15 @@ class TestChannelValues:
 
 class TestRecordCount:
     def test_channel_length_matches_record_count(self, pyirsdk_ibt, rust_logfile):
-        """Every channel table should have exactly session_record_count rows."""
+        """Every channel table should have exactly session_record_count rows
+        (times the sub-sample count for merged _ST channels)."""
         expected = pyirsdk_ibt._disk_header.session_record_count
+        counts = {vh.name: vh.count for vh in pyirsdk_ibt._var_headers}
         for name, table in rust_logfile.channels.items():
+            per_tick = counts[name] if name.endswith("_ST") else 1
             assert (
-                len(table) == expected
-            ), f"Channel '{name}' has {len(table)} rows, expected {expected}"
+                len(table) == expected * per_tick
+            ), f"Channel '{name}' has {len(table)} rows, expected {expected * per_tick}"
 
 
 # ── Session info YAML ────────────────────────────────────────────────

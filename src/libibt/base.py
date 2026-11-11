@@ -96,6 +96,9 @@ class LogFile:
         channels: Dict mapping channel names to PyArrow tables. Each table has
             'timecodes' (int64, ms) and '<channel_name>' columns. Channel metadata
             (units, desc, interpolate) stored in schema.field.metadata with bytes keys.
+            Time-subsample variables ('_ST' suffix) are single higher-rate channels;
+            other array variables (e.g. per-car CarIdx arrays) are vector-valued
+            channels whose value column is a FixedSizeList.
         laps: PyArrow table with columns: num (int), start_time (int), end_time (int).
             Times are in milliseconds.
         metadata: Dict of session metadata (track, session info, etc.)
@@ -409,14 +412,34 @@ class LogFile:
             field = channel_table.schema.field(name)
             meta = ChannelMetadata.from_field(field)
             channel_timecodes = channel_table.column("timecodes").to_numpy()
-            channel_values = channel_table.column(name).to_numpy(zero_copy_only=False)
+
+            if pa.types.is_fixed_size_list(field.type):
+                # Vector-valued channel (e.g. per-car CarIdx arrays): work on
+                # a (rows, list_size) 2-D view of the flattened values
+                list_size = field.type.list_size
+                list_col = channel_table.column(name).combine_chunks()
+                channel_values = list_col.values.to_numpy(zero_copy_only=False).reshape(
+                    -1, list_size
+                )
+            else:
+                list_size = None
+                channel_values = channel_table.column(name).to_numpy(zero_copy_only=False)
 
             if meta.interpolate:
-                resampled_values = np.interp(
-                    target_timecodes_np,
-                    channel_timecodes,
-                    channel_values,
-                )
+                if list_size is not None:
+                    resampled_values = np.stack(
+                        [
+                            np.interp(target_timecodes_np, channel_timecodes, channel_values[:, j])
+                            for j in range(list_size)
+                        ],
+                        axis=1,
+                    )
+                else:
+                    resampled_values = np.interp(
+                        target_timecodes_np,
+                        channel_timecodes,
+                        channel_values,
+                    )
             else:
                 indices = np.searchsorted(channel_timecodes, target_timecodes_np, side="right") - 1
                 leading_mask = indices < 0
@@ -426,14 +449,22 @@ class LogFile:
                     resampled_values = resampled_values.copy()
                     resampled_values[leading_mask] = channel_values[0]
 
-            output_type = field.type
-            if meta.interpolate and pa.types.is_integer(field.type):
-                output_type = pa.float64()
+            if list_size is not None:
+                value_type = field.type.value_type
+                if meta.interpolate and pa.types.is_integer(value_type):
+                    value_type = pa.float64()
+                flat = pa.array(resampled_values.reshape(-1), type=value_type)
+                resampled_col = pa.FixedSizeListArray.from_arrays(flat, list_size)
+            else:
+                output_type = field.type
+                if meta.interpolate and pa.types.is_integer(field.type):
+                    output_type = pa.float64()
+                resampled_col = pa.array(resampled_values, type=output_type)
 
             new_table = pa.table(
                 {
                     "timecodes": timecodes,
-                    name: pa.array(resampled_values, type=output_type),
+                    name: resampled_col,
                 }
             )
 
