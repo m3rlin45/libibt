@@ -2,7 +2,7 @@ use arrow::pyarrow::ToPyArrow;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use libibt::IbtFile;
+use libibt::{IbtFile, MetadataValue};
 
 /// iRacing IBT telemetry file parser implemented in Rust.
 #[pymodule]
@@ -111,41 +111,15 @@ fn open_source(source: &Bound<'_, PyAny>) -> PyResult<(IbtFile, String)> {
     ))
 }
 
+/// The metadata dict, as laid out by `IbtFile::metadata_entries`.
 fn build_metadata<'py>(py: Python<'py>, ibt_file: &IbtFile) -> PyResult<Bound<'py, PyDict>> {
     let dict = PyDict::new(py);
-    let yaml_str = ibt_file.session_info_yaml();
-
-    dict.set_item("session_info_yaml", yaml_str)?;
-
-    for line in yaml_str.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("TrackName: ") {
-            dict.set_item("track_name", rest.trim())?;
-        } else if let Some(rest) = trimmed.strip_prefix("TrackDisplayName: ") {
-            dict.set_item("track_display_name", rest.trim())?;
-        } else if let Some(rest) = trimmed.strip_prefix("TrackCity: ") {
-            dict.set_item("track_city", rest.trim())?;
-        } else if let Some(rest) = trimmed.strip_prefix("TrackCountry: ") {
-            dict.set_item("track_country", rest.trim())?;
-        } else if let Some(rest) = trimmed.strip_prefix("TrackLength: ") {
-            dict.set_item("track_length", rest.trim())?;
-        } else if let Some(rest) = trimmed.strip_prefix("SeriesID: ") {
-            dict.set_item("series_id", rest.trim())?;
-        } else if let Some(rest) = trimmed.strip_prefix("SeasonID: ") {
-            dict.set_item("season_id", rest.trim())?;
-        } else if let Some(rest) = trimmed.strip_prefix("SessionID: ") {
-            dict.set_item("session_id", rest.trim())?;
-        } else if let Some(rest) = trimmed.strip_prefix("SubSessionID: ") {
-            dict.set_item("sub_session_id", rest.trim())?;
+    for (key, value) in ibt_file.metadata_entries() {
+        match value {
+            MetadataValue::Str(v) => dict.set_item(key, v)?,
+            MetadataValue::Int(v) => dict.set_item(key, v)?,
+            MetadataValue::Float(v) => dict.set_item(key, v)?,
         }
     }
-
-    dict.set_item("tick_rate", ibt_file.tick_rate())?;
-    dict.set_item("record_count", ibt_file.record_count())?;
-    dict.set_item("lap_count", ibt_file.sub_header.lap_count)?;
-    dict.set_item("session_start_date", ibt_file.sub_header.session_start_date)?;
-    dict.set_item("start_time", ibt_file.sub_header.start_time)?;
-    dict.set_item("end_time", ibt_file.sub_header.end_time)?;
-
     Ok(dict)
 }
