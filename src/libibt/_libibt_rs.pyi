@@ -5,6 +5,6 @@ from typing import BinaryIO
 from libibt.base import LogFile
 
 def ibt(
-    source: str | bytes | os.PathLike[str] | BinaryIO,
+    source: str | bytes | bytearray | memoryview | os.PathLike[str] | BinaryIO,
     progress: Callable[[int, int], None] | None = None,
 ) -> LogFile: ...
