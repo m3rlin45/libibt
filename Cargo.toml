@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/libibt", "crates/libibt-python"]
+members = ["crates/libibt", "crates/libibt-python", "crates/libibt-ffi"]
 resolver = "2"
 
 [workspace.dependencies]
