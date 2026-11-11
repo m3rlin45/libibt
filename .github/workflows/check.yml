@@ -46,7 +46,11 @@ jobs:
         run: uv run mypy src/
 
       - name: Python tests
-        run: uv run pytest tests/ -v
+        run: uv run pytest tests/ -v -n auto
 
+  # Build and Publish (publish.yml) already runs the Pyodide jobs on pushes
+  # and on PRs into main, so run them here only for the PRs it skips:
+  # stacked PRs whose base is another PR's branch.
   pyodide:
+    if: github.event_name == 'pull_request' && github.base_ref != 'main' && github.base_ref != 'master'
     uses: ./.github/workflows/pyodide.yml

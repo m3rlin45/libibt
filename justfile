@@ -24,7 +24,7 @@ test-rust:
 
 # Run Python tests
 test:
-    uv run pytest tests/ -v
+    uv run pytest tests/ -v -n auto
 
 # Run all checks (lint, clippy, typecheck, test-rust, test)
 check: lint clippy typecheck test-rust test
