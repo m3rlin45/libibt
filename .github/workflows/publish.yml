@@ -25,6 +25,8 @@ jobs:
   #   1. build the wheels for every supported Python with cibuildwheel
   #   2. test each wheel from a fresh venv outside the checkout, so the
   #      tests only see what the wheel installed
+  #   3. (on one runner per desktop OS) run the Rust tests, build the C ABI
+  #      library and check it against each wheel's LogFile
   # Lint, clippy, the Rust tests and the from-source pytest run live in the
   # Check workflow (check.yml).
   build-and-test:
@@ -35,6 +37,15 @@ jobs:
       matrix:
         # Note: windows-11-arm excluded until pyarrow publishes Windows ARM64 wheels
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-latest, windows-latest]
+        include:
+          # The C ABI library (crates/libibt-ffi) is built and tested on one
+          # runner per desktop OS.
+          - os: ubuntu-latest
+            ffi-tests: true
+          - os: macos-latest
+            ffi-tests: true
+          - os: windows-latest
+            ffi-tests: true
     env:
       # Keep in sync with `build` in [tool.cibuildwheel] in pyproject.toml.
       PYTHON_VERSIONS: "3.10 3.11 3.12 3.13 3.14"
@@ -118,6 +129,33 @@ jobs:
           uv pip install --python "$venv" "${wheel}[test]" pytest-xdist
           if [ "$RUNNER_OS" = "Windows" ]; then py="$venv/Scripts/python.exe"; else py="$venv/bin/python"; fi
           "$py" -m pytest tests/ -v --tb=short -n auto
+          echo "::endgroup::"
+        done
+
+    # The C ABI library for non-Python consumers (crates/libibt-ffi). After
+    # the wheels, so nothing here can leak into one. The wheel tests above
+    # skip tests/test_ffi.py (LIBIBT_FFI_LIB is not set); here it runs
+    # against the release library through each wheel venv, so the C ABI is
+    # compared with the LogFile of every wheel.
+    - name: Rust tests and the C ABI library
+      if: matrix.ffi-tests
+      shell: bash
+      run: |
+        set -euo pipefail
+        cargo test -p libibt -p libibt-ffi
+        cargo build --release -p libibt-ffi
+        case "$RUNNER_OS" in
+          Windows) lib=ibt_ffi.dll ;;
+          macOS) lib=libibt_ffi.dylib ;;
+          *) lib=libibt_ffi.so ;;
+        esac
+        test -f "target/release/$lib"
+        for v in $PYTHON_VERSIONS; do
+          venv="../wheel-venv-$v"
+          if [ "$RUNNER_OS" = "Windows" ]; then py="$venv/Scripts/python.exe"; else py="$venv/bin/python"; fi
+          echo "::group::Python $v"
+          # Relative to the checkout: Git Bash's $PWD is not a path Python can open.
+          LIBIBT_FFI_LIB="target/release/$lib" "$py" -m pytest tests/test_ffi.py -v --tb=short
           echo "::endgroup::"
         done
 
