@@ -86,8 +86,9 @@ fn open_source(source: &Bound<'_, PyAny>) -> PyResult<(IbtFile, String)> {
         return Ok((ibt_file, path_str));
     }
 
-    // Bytes
-    if let Ok(bytes_val) = source.extract::<Vec<u8>>() {
+    // Anything supporting the buffer protocol: bytes, bytearray, memoryview, ...
+    if let Ok(buffer) = pyo3::buffer::PyBuffer::<u8>::get(source) {
+        let bytes_val = buffer.to_vec(source.py())?;
         let ibt_file = IbtFile::from_bytes(bytes_val)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         return Ok((ibt_file, "<bytes>".to_string()));
@@ -104,7 +105,7 @@ fn open_source(source: &Bound<'_, PyAny>) -> PyResult<(IbtFile, String)> {
     }
 
     Err(pyo3::exceptions::PyTypeError::new_err(
-        "Expected str, bytes, PathLike, or file-like object",
+        "Expected str, PathLike, bytes-like, or file-like object",
     ))
 }
 
