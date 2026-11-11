@@ -1,6 +1,6 @@
 use arrow::pyarrow::ToPyArrow;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyList};
 
 use libibt::{IbtFile, MetadataValue};
 
@@ -113,13 +113,65 @@ fn open_source(source: &Bound<'_, PyAny>) -> PyResult<(IbtFile, String)> {
 
 /// The metadata dict, as laid out by `IbtFile::metadata_entries`.
 fn build_metadata<'py>(py: Python<'py>, ibt_file: &IbtFile) -> PyResult<Bound<'py, PyDict>> {
+    let entries = ibt_file
+        .metadata_entries()
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
     let dict = PyDict::new(py);
-    for (key, value) in ibt_file.metadata_entries() {
-        match value {
-            MetadataValue::Str(v) => dict.set_item(key, v)?,
-            MetadataValue::Int(v) => dict.set_item(key, v)?,
-            MetadataValue::Float(v) => dict.set_item(key, v)?,
-        }
+    for (key, value) in &entries {
+        dict.set_item(key, metadata_value(py, value)?)?;
     }
     Ok(dict)
+}
+
+/// A metadata value as the Python object PyYAML would have built: `None`,
+/// `bool`, `int`, `float`, `str`, `datetime.date`, `datetime.datetime`,
+/// `list` or `dict`.
+fn metadata_value<'py>(py: Python<'py>, value: &MetadataValue) -> PyResult<Bound<'py, PyAny>> {
+    Ok(match value {
+        MetadataValue::Null => py.None().into_bound(py),
+        MetadataValue::Bool(v) => v.into_pyobject(py)?.to_owned().into_any(),
+        MetadataValue::Int(v) => v.into_pyobject(py)?.into_any(),
+        MetadataValue::Float(v) => v.into_pyobject(py)?.into_any(),
+        MetadataValue::Str(v) => v.into_pyobject(py)?.into_any(),
+        MetadataValue::Date(d) => py
+            .import("datetime")?
+            .getattr("date")?
+            .call1((d.year, d.month, d.day))?,
+        MetadataValue::DateTime(t) => {
+            let datetime = py.import("datetime")?;
+            let tzinfo = match t.utc_offset_minutes {
+                Some(minutes) => {
+                    let kwargs = PyDict::new(py);
+                    kwargs.set_item("minutes", minutes)?;
+                    let offset = datetime.getattr("timedelta")?.call((), Some(&kwargs))?;
+                    datetime.getattr("timezone")?.call1((offset,))?
+                }
+                None => py.None().into_bound(py),
+            };
+            datetime.getattr("datetime")?.call1((
+                t.date.year,
+                t.date.month,
+                t.date.day,
+                t.hour,
+                t.minute,
+                t.second,
+                t.microsecond,
+                tzinfo,
+            ))?
+        }
+        MetadataValue::List(items) => {
+            let list = PyList::empty(py);
+            for item in items {
+                list.append(metadata_value(py, item)?)?;
+            }
+            list.into_any()
+        }
+        MetadataValue::Map(pairs) => {
+            let dict = PyDict::new(py);
+            for (key, item) in pairs {
+                dict.set_item(metadata_value(py, key)?, metadata_value(py, item)?)?;
+            }
+            dict.into_any()
+        }
+    })
 }
