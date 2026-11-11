@@ -1,5 +1,6 @@
 pub mod error;
 pub mod header;
+pub mod metadata;
 pub mod reader;
 pub mod session_info;
 pub mod var_header;
@@ -9,6 +10,7 @@ pub mod channel;
 
 pub use error::{IbtError, Result};
 pub use header::{DiskSubHeader, IbtHeader};
+pub use metadata::MetadataValue;
 pub use reader::IbtFile;
 pub use var_header::{VarHeader, VarType};
 

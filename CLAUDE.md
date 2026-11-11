@@ -24,6 +24,7 @@ crates/libibt/                           # Pure Rust core (publishable to crates
     reader.rs       — IbtFile: mmap, header parsing, channel extraction
     channel.rs      — Arrow RecordBatch construction (feature-gated behind `arrow`)
     session_info.rs — Session YAML extraction
+    metadata.rs     — Metadata document: keys, order and value types shared by every binding
 
 crates/libibt-python/                    # PyO3 bindings (publish = false)
   src/
